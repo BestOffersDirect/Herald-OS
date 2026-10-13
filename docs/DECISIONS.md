@@ -857,3 +857,76 @@ Alternatives considered:
 - **Rejected: pivot tables for Sheets' summaries.** A real pivot table needs a cache that Excel
   works out and Univer's open-source packages cannot show; formulas over whole columns give the
   same table, stay live in every spreadsheet app, and need nothing of Herald's to read.
+
+## ADR-022: The desktop pet is built into Herald and shows Hermes's own pet
+
+Hermes has a pet of its own: `display.pet` in its `config.yaml` turns it on, picks a petdex pet
+from `~/.hermes/pets` and sets its size, and the Hermes CLI, the TUI and Hermes's desktop app draw
+it. Herald OS shows the same pet on its desktop as the visible face of Hermes: it acts out what
+Hermes is doing, holds up approvals, chats in a bubble, takes dropped files, walks to the window
+Hermes works in, and gets out of the way. It needs the shell's windows, approvals and sessions, so
+it is built into the shell (`src/features/pet`, `electron/pet`, the contract in `shared/pet.ts`),
+and its actions are commands in the registry (ADR-014).
+
+- **Hermes owns the pet; Herald owns where it stands.** On or off, which pet and its size stay
+  Hermes's `display.pet`, written only through Hermes's gateway (`pet.select`, `pet.scale`,
+  `pet.disable`), so every Hermes surface agrees. Herald bundles no pet artwork: installing one
+  from the petdex gallery goes through `pet.select` too. Main reads `config.yaml` and the pets
+  folder itself, as Hermes resolves them, with the `yaml` package (ISC, no dependencies): the pet
+  is there before the backend is up, multi-megabyte spritesheets never cross the gateway, and a
+  stat check every 4 seconds notices changes made anywhere. Main reads only `display.pet`, never
+  logs what it read (the file can hold credentials), and serves a spritesheet only from a pet's own
+  folder (one path segment, no `..`, a `pet.json` path only as a plain file name, 32 MB at most).
+  Herald's own choices (the spot, put away, reactions, moods, notes, following) live in
+  `prefs.json`.
+- **The Hermes window is the brain.** Gateway events and server requests, approvals among them,
+  reach only the window that owns a session. So the Hermes window works out a snapshot of what the
+  pet shows; in panels mode main relays it to the pet's window and the pet's clicks back as
+  actions, and in desktop mode both are the same window. Main takes snapshots only from the Hermes
+  window, and actions and placements only from the pet's.
+- **Approvals on Herald's own card.** The pet holds the request host's approval card, exported with
+  a choice handler, a voice hint and no autofocus. It answers only a request that is still pending
+  and is an approval, with a choice the card offers; it never answers by itself and never takes
+  the focus, so no keypress can approve. In desktop mode the request stack leaves the approval to
+  the pet while it holds it; on Linux the Hermes window keeps its copy too, so it cannot get lost
+  behind other windows. Questions, passwords and secrets stay in the stack.
+- **A quiet chat.** The bubble's questions go to a background Herald session of the pet's own,
+  started the way an Office window's Ask Hermes bar starts one, so it never takes over the Hermes
+  window, posts into the person's chats or notifies.
+- **Following from the command log.** The pet walks to a Docs, Sheets, Slides or Canvas window when
+  the command log shows Hermes (its `agent` source) running a command there other than list,
+  status, history or layers, rather than on guesses from the tool stream. Desktop mode takes exact
+  positions from Herald's window manager. niri reports where floating windows are but not where
+  tiles sit in the view, so a tile's place is estimated from the columns before it (their widths
+  and niri's 10 px gaps).
+- **Moods and notes from what Herald already has.** System status (sampled every 3 minutes, only
+  while the pet shows), the flag `herald-os-update --check` leaves on Herald OS Linux, and Hermes's
+  turns. They are few (one note at a time, 20 minutes between notes of a kind) and each kind can be
+  turned off.
+- **An animation that rests.** A canvas draws the spritesheet at Hermes's pace (a 1.1 s loop of six
+  frames, about 5.5 a second); idle plays two loops after a change and then rests on one frame
+  with no timer, nothing runs while the pet is hidden, and reduced motion shows a still frame. In
+  the dev app on macOS that was 14 draws in 2.5 s of cheering, one with reduced motion and none in
+  5 s idle, and idle CPU for all its Electron processes (12 samples of 5 s) was 2.41% with the pet
+  resting and 2.43% with it put away.
+- **On Linux, a window of its own.** The pet is a small transparent window, only as big as the pet
+  and what it holds. niri's window rule (`linux/niri/config.kdl`) opens it floating and unfocused
+  at the bottom right; Herald moves it through niri's IPC and sizes it through its size hints.
+  niri focuses windows on hover and click, so Herald gives the keys straight back (within 0.3 s,
+  measured) unless the pet's chat box is open. In the Fedora 44 aarch64 VM (niri 26.04) it opened
+  unfocused, carried the box for a pending update, chatted with Hermes, held an approval whose Deny
+  reached Hermes, went and came back with Put away, hid for full screen and followed a Docs window.
+
+Alternatives considered:
+
+- **Rejected: the tamahermes plugin from Hermes's catalogue.** It reads other tools' folders
+  (`~/.codex` and more) and runs an unauthenticated loopback server; Herald will not install it or
+  depend on it.
+- **Rejected: a full-screen transparent overlay on Linux.** Wayland has no portable way to let
+  clicks through a window, and niri has no rule for a window that never takes focus.
+
+**Known limits.** In desktop mode, web pages (native views) paint above the pet. On Linux the pet
+keeps clear of the pointer but cannot see text fields in other windows, and an Office window's own
+Ask Hermes sessions do not reach the pet's brain. The automations in the background count are an
+estimate (the latest run of the six most recently run enabled jobs, checked every 2 minutes and on
+cron changes), and so is a tile's position on niri.

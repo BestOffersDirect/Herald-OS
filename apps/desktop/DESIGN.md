@@ -80,6 +80,7 @@ Stores (nanostores; subscribe with `useStore`):
 - `store/web-windows.ts`: `$webWindows`, `openWebWindow(url, { title, bounds })`, `closeWebWindow`, `focusWebWindow`, `$webViewsCovered` (overlays that hide the native views).
 - `store/continuity.ts`: `$threads`, `$catchUp`, `refreshThreads`, `continueThread`, `startNextStep`, `dismissThread`, `setExclusions` (Pick up where you left off; pure evidence and parsing in `lib/continuity.ts`, see `docs/ARCHITECTURE.md`).
 - `store/voice.ts`: `$voice` (state, engine, captions, live meter), `$voiceActive`, `startVoice`, `endConversation`, `toggleVoice`, `toggleMute`; `store/wake.ts`: `$wake`, `setWakeWordEnabled`. Voice UI lives in `src/features/voice/` (`VoiceOrb`, `MicButton`, `VoiceIndicator`); see `docs/VOICE.md`.
+- `features/pet/`: `$petInfo` (Hermes's pet, as main reads it), `$petSnapshot` (what the pet shows), `$petPrefs` (Herald's own pet preferences), `$petChat`, `showPet`, `hidePet`, `selectPet`, `setPetScale`, `setPetEnabled`. The brain (`brain.ts`) runs in the Hermes window and publishes the snapshot; the pet commands are in `src/commands/pet.ts`; see `docs/ARCHITECTURE.md`.
 
 Electron bridge `window.heraldOS` (typed in `preload/index.ts`):
 `backend.{getState,onState,restart,rest,logTail}`, `system.{info,stats,processes,network,subscribeStats}`,

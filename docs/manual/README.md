@@ -16,6 +16,8 @@ This manual is for using Herald OS day to day. The [README](../../README.md) cov
   working on pictures with Hermes.
 - [Herald Office](office.md): Herald Docs, Sheets and Slides, the files they open and save,
   printing, and working on documents with Hermes and your voice.
+- [The desktop pet](pet.md): Hermes's pet on the desktop, what it shows, approvals, chat and
+  dropped files, and keeping it out of the way.
 - [Troubleshooting](troubleshooting.md): when something does not work.
 - [FAQ](faq.md): short answers to common questions.
 

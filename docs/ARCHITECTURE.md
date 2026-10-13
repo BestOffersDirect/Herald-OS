@@ -258,6 +258,38 @@ and file access in `electron/office`.
   installed; no window converts through it yet, so `.odt`, `.ods` and `.odp` stay off in
   `shared/office/files.ts`.
 
+## Herald desktop pet
+
+Hermes's petdex pet on the desktop (decision record: ADR-022; using it:
+[the manual](manual/pet.md)) lives in `src/features/pet`, with its contract in `shared/pet.ts` and
+main's side in `electron/pet`. Which pet, its size and on or off are Hermes's `display.pet`, changed
+only through Hermes's gateway (`pet.select`, `pet.scale`, `pet.disable`); where the pet stands and
+what it reacts to are Herald's prefs.
+
+- **Main** (`electron/pet/`): `config.ts` reads `display.pet` from Hermes's `config.yaml` and the
+  pets in its `pets` folder the way Hermes resolves them, and logs nothing it read. `ipc.ts` checks
+  their file stats every 4 seconds, sends what it found to every window, hands out the shown pet's
+  spritesheet (from that pet's own folder, up to 32 MB), and in panels mode relays between the
+  Hermes window and the pet's window: snapshots only from the first, actions and placements only
+  from the second. `window.ts` is the pet's window in panels mode, sized through its size hints,
+  moved through niri's IPC, and handing the keys back whenever niri focuses it.
+- **The brain** (`brain.ts`) runs in the Hermes window, because gateway events and approvals reach
+  only the window that owns a session. It folds Hermes's sessions, the pending approval, voice, the
+  command log, system status and the notes into one `PetSnapshot`, and acts on what the pet sends
+  back (an answer to the approval, a question, a dropped file, a note opened). `transport.ts`
+  carries both ways: an atom in desktop mode, main's relay in panels mode. `chat.ts` runs the
+  pet's own background session.
+- **The pet** is drawn by `PetOverlay.tsx` over the desktop in desktop mode, or by `PetSurface.tsx`
+  in a window of its own (`Herald OS · Pet`, with a window rule in the repository's
+  `linux/niri/config.kdl`) in panels mode. Both render `PetView.tsx` (the sprite on a canvas, the
+  approval card from `src/shell/RequestHost.tsx`, the chat bubble, the drop choices) and share the
+  pure modules: `sprite.ts` (the spritesheet's rows), `state.ts` (what it shows), `stage.ts` and
+  `placement.ts` (where it stands), `hide.ts` (when it hides), `drops.ts`, `moods.ts` and
+  `chat-model.ts`.
+- **Commands and settings.** The `pet.*` commands (`src/commands/pet.ts`), Settings > Pet
+  (`PetSection.tsx`) and the menu bar's paw (`PetMenuBarToggle.tsx`) change the pet through
+  `actions.ts`: Hermes's settings through its gateway, Herald's own in prefs.
+
 ## System bridge
 
 `plugins/herald-os-bridge` is a regular out-of-tree Hermes plugin. It registers a narrow toolset

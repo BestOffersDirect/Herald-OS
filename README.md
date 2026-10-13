@@ -280,6 +280,11 @@ abilities as a regular Hermes plugin, `herald-os-bridge`.
   masters and a presenter view. Ask Hermes for a cover letter, a cleaner column or slides from a
   report and watch each change land as a step you can undo. Before Herald first saves over a file,
   it says what the file would lose and backs it up. See [the manual](docs/manual/office.md).
+- **A desktop pet**: Hermes's own petdex pet on the desktop, the same one its CLI, TUI and desktop
+  app show. It acts out what Hermes is doing, holds up approvals for you to answer, takes questions
+  in a chat bubble and files you drop on it, walks over to the window Hermes works in, and gets out
+  of the way for full screen, presentations and screen shares. See
+  [the manual](docs/manual/pet.md).
 - **Make it yours**: twelve themes (two light) that also dress Hermes's own command line, a theme
   made from any image, themes installed from git, your own fonts, and Hermes can design one from a
   description. Widgets for the menu bar, the Overview or their own window run sandboxed with only

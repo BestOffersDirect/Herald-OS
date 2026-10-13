@@ -14,6 +14,7 @@ work everywhere.
 | Talk to Hermes | `Alt+Space` | `Super+V` |
 | Dictate into any app (again, or a pause, to finish) | `Cmd+Ctrl+X` | `Super+Ctrl+X` |
 | Emoji, typed into any app | `Cmd+Ctrl+E` | `Super+Ctrl+E` |
+| Put the desktop pet away, or bring it back | `Cmd+Ctrl+H` | `Super+Ctrl+H` |
 | Ask about part of the screen | `Cmd+Shift+S` | `Super+Shift+S` |
 | Ask about the focused window | | `Super+Space` |
 | Screenshot of the whole screen, to Hermes | | `Super+Ctrl+Shift+S` |
