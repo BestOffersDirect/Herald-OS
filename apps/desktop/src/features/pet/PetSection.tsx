@@ -21,7 +21,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { PET_DEFAULT_SCALE, type PetMoodKind, type PetNoteKind, type PetReaction } from '../../../shared/pet.ts'
 import { GlassButton, Toggle } from '../../components/ui/glass.tsx'
 import { cn } from '../../lib/cn.ts'
-import { gatewayRequest } from '../../store/gateway.ts'
+import { $connection, gatewayRequest } from '../../store/gateway.ts'
 import { errorText, InlineNote, markSaved, SectionTitle, SettingsGroup, SettingsRow } from '../settings/sections/shared.tsx'
 import { $petPrefs, petShortcutLabel, selectPet, setPetEnabled, setPetPrefs, setPetScale } from './actions.ts'
 import { $petInfo } from './info.ts'
@@ -65,9 +65,17 @@ function thumbFor(slug: string, url?: string): Promise<string | null> {
   let pending = thumbs.get(key)
 
   if (!pending) {
+    // A failed request (Hermes still starting) is not kept, so the next look asks again.
     pending = gatewayRequest('pet.thumb', url ? { slug, url } : { slug })
       .then(result => (result.ok && result.dataUri ? result.dataUri : null))
       .catch(() => null)
+      .then(value => {
+        if (!value) {
+          thumbs.delete(key)
+        }
+
+        return value
+      })
     thumbs.set(key, pending)
   }
 
@@ -75,6 +83,7 @@ function thumbFor(slug: string, url?: string): Promise<string | null> {
 }
 
 function PetThumb({ slug, url, lazy }: { slug: string; url?: string; lazy?: boolean }) {
+  const connection = useStore($connection)
   const [src, setSrc] = useState<string | null>(null)
   const [near, setNear] = useState(!lazy)
   const ref = useRef<HTMLDivElement>(null)
@@ -98,14 +107,14 @@ function PetThumb({ slug, url, lazy }: { slug: string; url?: string; lazy?: bool
   useEffect(() => {
     let live = true
 
-    if (near) {
+    if (near && connection === 'open') {
       void thumbFor(slug, url).then(value => live && setSrc(value))
     }
 
     return () => {
       live = false
     }
-  }, [slug, url, near])
+  }, [slug, url, near, connection])
 
   return (
     <div ref={ref} className="flex size-14 items-center justify-center overflow-hidden rounded-lg bg-white/6">

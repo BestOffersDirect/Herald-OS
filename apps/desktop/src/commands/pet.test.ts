@@ -130,6 +130,13 @@ describe('the pet commands', () => {
 
     expect((await command('pet.size').run({ scale: 0.5 }, UI)).summary).toBe("The pet's size is now 0.5")
     expect(hermes.scale).toHaveBeenCalledWith(0.5)
+
+    $petInfo.set({ ...INSTALLED, scale: 0.4 })
+    await command('pet.size').run({ step: 1 }, UI)
+    expect(hermes.scale).toHaveBeenLastCalledWith(0.5)
+    await command('pet.size').run({ step: -1 }, UI)
+    expect(hermes.scale).toHaveBeenLastCalledWith(0.32)
+    expect((await command('pet.size').run({}, UI)).ok).toBe(false)
   })
 
   it('list the installed pets and the one in use', async () => {
@@ -168,6 +175,8 @@ describe('the pet on the voice fast path', () => {
     expect(matchIntent('turn off the pet')).toMatchObject({ command: 'pet.enable', args: { enabled: false } })
     expect(matchIntent('turn the pet on')).toMatchObject({ command: 'pet.enable', args: { enabled: true } })
     expect(matchIntent('what is the pet doing')).toMatchObject({ command: 'pet.status' })
+    expect(matchIntent('make the pet bigger')).toMatchObject({ command: 'pet.size', args: { step: 1 } })
+    expect(matchIntent('make the pet smaller')).toMatchObject({ command: 'pet.size', args: { step: -1 } })
     expect(matchIntent('use the boba pet')).toMatchObject({ command: 'pet.select', args: { name: 'boba' } })
   })
 })

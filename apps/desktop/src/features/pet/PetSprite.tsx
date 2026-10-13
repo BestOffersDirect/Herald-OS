@@ -69,7 +69,9 @@ export function PetSprite({ sheet, pose, since, scale, reduced, paused, rest }: 
       }
 
       const step = frameAt(rest ? 'idle' : pose, frames, Date.now() - since, reduced)
-      paint(canvas, image, row, step.frame, mirror)
+      // A pose held still (motion reduced, a worried pet at rest) shows its middle frame: a row's first
+      // frame is often the plain standing one, so it would read as idle.
+      paint(canvas, image, row, step.nextMs === null && pose !== 'idle' ? Math.floor(frames / 2) : step.frame, mirror)
 
       if (step.nextMs !== null && !paused) {
         timer = setTimeout(draw, Math.max(16, step.nextMs))

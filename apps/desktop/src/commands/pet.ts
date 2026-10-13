@@ -24,6 +24,8 @@ const AWAY: Record<PetHideReason, string> = {
 }
 
 const SLUG = /^[a-z0-9][a-z0-9_-]*$/i
+/** One step of "bigger" or "smaller": a quarter of the size. */
+const SIZE_STEP = 1.25
 
 const petName = (): string => $petInfo.get().displayName ?? 'The pet'
 
@@ -194,11 +196,18 @@ export const petCommands: readonly OsCommand[] = [
     title: 'Resize the pet',
     description: `Set the pet’s size for every Hermes surface (display.pet.scale, from ${PET_MIN_SCALE} to ${PET_MAX_SCALE}; 1 is the sprite’s own 192 by 208 pixels, and Hermes starts at 0.33).`,
     tier: 'mutate',
-    args: [{ name: 'scale', type: 'number', description: `The size, from ${PET_MIN_SCALE} to ${PET_MAX_SCALE}`, required: true }],
-    phrases: ['set the pet size to {scale}', 'make the pet size {scale}'],
-    run: async ({ scale }) => {
+    args: [
+      { name: 'scale', type: 'number', description: `The size, from ${PET_MIN_SCALE} to ${PET_MAX_SCALE}` },
+      { name: 'step', type: 'number', description: 'Instead of a size: 1 makes it a step bigger, -1 a step smaller' }
+    ],
+    phrases: ['set the pet size to {scale}', 'make the pet size {scale}', { phrase: 'make the pet bigger', args: { step: 1 } }, { phrase: 'make the pet smaller', args: { step: -1 } }],
+    run: async ({ scale, step }) => {
+      if (scale === undefined && step === undefined) {
+        return fail('pet.size needs a scale or a step')
+      }
+
       try {
-        const info = await setPetScale(Number(scale))
+        const info = await setPetScale(scale !== undefined ? Number(scale) : Math.round($petInfo.get().scale * SIZE_STEP ** Math.sign(Number(step)) * 100) / 100)
 
         return ok(`The pet's size is now ${info.scale}`)
       } catch (error) {

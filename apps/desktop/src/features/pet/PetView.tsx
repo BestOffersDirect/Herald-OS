@@ -133,7 +133,7 @@ export function PetView({ sheet, scale, snapshot, ui, extras, layout, pose, pose
         onClose={() => ui.setBubble(false)}
       />
     ) : extras === 'say' && ui.say ? (
-      <button type="button" onClick={() => ui.setBubble(true)} className="float pointer-events-auto max-w-[260px] rounded-2xl px-3 py-2 text-left text-[12.5px] leading-snug text-fg animate-pop">
+      <button type="button" onClick={() => ui.setBubble(true)} className="float pointer-events-auto w-max max-w-[260px] rounded-2xl px-3 py-2 text-left text-[12.5px] leading-snug text-fg animate-pop">
         {ui.say}
       </button>
     ) : null

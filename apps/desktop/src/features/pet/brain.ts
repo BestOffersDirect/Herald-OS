@@ -1,4 +1,5 @@
 import type { ApprovalChoice } from '@herald-os/client'
+import type { SystemStats } from '../../../shared/ipc.ts'
 import { type PetAction, type PetApproval, type PetDropSuggestionId, type PetFollow, type PetFollowApp, type PetMood, type PetNote, type PetSnapshot, petShown } from '../../../shared/pet.ts'
 import { approvalFacts } from '../../lib/approval-choices.ts'
 import type { ChatMessage, ChatState } from '../../lib/chat-model.ts'
@@ -371,6 +372,27 @@ function readUpdateNote(): void {
   }
 }
 
+/** Work out the mood from a sample of the system's status (the development hook passes its own). */
+export function applyPetStats(stats: SystemStats | null): void {
+  mood = nextMood(mood, stats, $petPrefs.get().moods, $env.get()?.homeDir)
+  schedule()
+}
+
+/** A reaction beat as if a turn had just ended or the wake word had heard the person (development hook). */
+export function pulsePet(kind: 'cheer' | 'error' | 'wake'): void {
+  const now = Date.now()
+
+  if (kind === 'cheer') {
+    cheerAt = now
+  } else if (kind === 'error') {
+    errorAt = now
+  } else {
+    wakeAt = now
+  }
+
+  schedule()
+}
+
 function sampleMood(): void {
   if (!shownNow()) {
     return
@@ -378,10 +400,7 @@ function sampleMood(): void {
 
   void window.heraldOS.system
     .stats()
-    .then(stats => {
-      mood = nextMood(mood, stats, $petPrefs.get().moods, $env.get()?.homeDir)
-      schedule()
-    })
+    .then(applyPetStats)
     .catch(() => undefined)
 }
 

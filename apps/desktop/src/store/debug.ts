@@ -15,6 +15,7 @@ import { $wake } from './wake.ts'
 import { $webWindows, closeWebWindow, openWebWindow } from './web-windows.ts'
 import { $page, $windows, openApp, showPage } from './windows.ts'
 import { $petPrefs } from '../features/pet/actions.ts'
+import { applyPetStats, pulsePet } from '../features/pet/brain.ts'
 import { $petInfo } from '../features/pet/info.ts'
 import { $petSnapshot, petAct } from '../features/pet/transport.ts'
 
@@ -48,7 +49,9 @@ export function installDebugHook(): void {
         info: () => $petInfo.get(),
         snapshot: () => $petSnapshot.get(),
         prefs: () => $petPrefs.get(),
-        act: petAct
+        act: petAct,
+        pulse: pulsePet,
+        stats: applyPetStats
       },
       voice: {
         start: startVoice,
