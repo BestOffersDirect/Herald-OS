@@ -81,6 +81,7 @@ import type { BrandingPatch, BrandingView } from '../shared/branding.ts'
 import type { ModelId, ModelProgress, ModelStatus } from '../shared/canvas/models.ts'
 import type { OfficeAbilities, OfficeApp } from '../shared/office/files.ts'
 import type { MenuExtensions } from '../shared/menu-extensions.ts'
+import type { PetAction, PetBridge, PetCover, PetInfo, PetRect, PetSnapshot, PetWindowPlacement } from '../shared/pet.ts'
 import type { PluginMethod, PluginView } from '../shared/plugins.ts'
 import type { HeraldEvent } from '../shared/events.ts'
 import type { ThemeSpec, ThemeSummary } from '../shared/theme.ts'
@@ -288,6 +289,32 @@ const api = {
     renameTemplate: (app: OfficeApp, id: string, name: string): Promise<OfficeTemplateInfo> => ipcRenderer.invoke(IPC.officeTemplateRename, app, id, name),
     removeTemplate: (app: OfficeApp, id: string): Promise<void> => ipcRenderer.invoke(IPC.officeTemplateRemove, app, id)
   },
+  pet: {
+    info: (): Promise<PetInfo> => ipcRenderer.invoke(IPC.petInfo),
+    refresh: (): Promise<PetInfo> => ipcRenderer.invoke(IPC.petRefresh),
+    onInfo: (listener: (info: PetInfo) => void): Unsubscribe => subscribe(IPC.petInfoChanged, listener),
+    sheet: (slug: string): Promise<Uint8Array | null> => ipcRenderer.invoke(IPC.petSheet, slug),
+    publish: (snapshot: PetSnapshot): void => ipcRenderer.send(IPC.petPublish, snapshot),
+    // A listener may arrive after main last sent: main sends again to the pet window as it subscribes.
+    onSnapshot: (listener: (snapshot: PetSnapshot) => void): Unsubscribe => {
+      const off = subscribe(IPC.petSnapshot, listener)
+      ipcRenderer.send(IPC.petReplay, 'snapshot')
+
+      return off
+    },
+    act: (action: PetAction): void => ipcRenderer.send(IPC.petAct, action),
+    onAction: (listener: (action: PetAction) => void): Unsubscribe => subscribe(IPC.petAction, listener),
+    place: (placement: PetWindowPlacement): Promise<void> => ipcRenderer.invoke(IPC.petPlace, placement),
+    setInteractive: (on: boolean): Promise<void> => ipcRenderer.invoke(IPC.petInteractive, on),
+    setVisible: (on: boolean): Promise<void> => ipcRenderer.invoke(IPC.petVisible, on),
+    workArea: (): Promise<PetRect> => ipcRenderer.invoke(IPC.petWorkArea),
+    onCover: (listener: (cover: PetCover) => void): Unsubscribe => {
+      const off = subscribe(IPC.petCover, listener)
+      ipcRenderer.send(IPC.petReplay, 'cover')
+
+      return off
+    }
+  } satisfies PetBridge,
   catalog: {
     /** The install catalog with each entry's state on this machine (Linux: everything; macOS: what installs here). */
     list: (): Promise<CatalogGroupView[]> => ipcRenderer.invoke(IPC.catalogList),

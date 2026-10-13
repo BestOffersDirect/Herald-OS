@@ -33,6 +33,8 @@ import { registerWebIpc } from './ipc/web.ts'
 import { log, logTail } from './log.ts'
 import { migrateLegacyData } from './migrate.ts'
 import { registerNotificationHistoryIpc } from './notifications-history.ts'
+import { registerPetIpc } from './pet/ipc.ts'
+import { PetWindow } from './pet/window.ts'
 import { SwitchService } from './switches.ts'
 import { hermesHome, heraldOsDataDir, isDev } from './paths.ts'
 import { readPrefs, writePrefs } from './prefs.ts'
@@ -86,6 +88,8 @@ const mode = shellMode()
 // Panels mode (niri): several surface windows, compositor state mirror, control socket for hotkeys.
 const panels = mode === 'panels' ? new PanelShell(win => attachMainWindow(win)) : null
 const wallpaper = panels ? new WallpaperService(panels) : null
+// Panels mode: the desktop pet is a window of its own, which main moves through niri.
+const petWindow = panels ? new PetWindow(panels) : null
 // The agent's `os_ui` tool and the CLI run registry commands in the Hermes window through this bridge.
 const osBridge = new OsCommandBridge(() => (panels ? panels.mainWindow() : mainWindow))
 const plugins = new PluginHost(
@@ -295,6 +299,7 @@ function registerCoreIpc(): void {
   })
   registerControlsIpc()
   registerNotificationHistoryIpc()
+  registerPetIpc({ hermesWindow: () => (panels ? panels.mainWindow() : mainWindow), petWindow })
   registerDictationIpc(() => (panels ? panels.mainWindow() : mainWindow))
   registerCatalogIpc()
   registerSetupIpc()
@@ -327,6 +332,7 @@ function attachMainWindow(win: BrowserWindow): void {
 function createWindow(): void {
   if (panels) {
     panels.start()
+    petWindow?.start()
     void notifications?.start()
     control?.start()
     wallpaper?.start(readPrefs().wallpaper)

@@ -225,6 +225,19 @@ window-rule {
     geometry-corner-radius 14
     clip-to-geometry true
 }
+// The desktop pet: bottom right above the Dock, never focused on open, no frame; the shell moves it.
+// After the rule above, which would round and clip the sprite.
+window-rule {
+    match app-id=r#"^(herald-os|Herald OS)$"# title="^Herald OS · Pet$"
+    open-floating true
+    open-focused false
+    default-floating-position x=24 y=104 relative-to="bottom-right"
+    border { off; }
+    focus-ring { off; }
+    shadow { off; }
+    geometry-corner-radius 0
+    clip-to-geometry false
+}
 // The Hermes window shares the screen with one app by default (its pages adapt to a half column).
 window-rule {
     match app-id=r#"^(herald-os|Herald OS)$"# title="^Herald OS$"
@@ -361,6 +374,7 @@ binds {
     Mod+Ctrl+N hotkey-overlay-title="Night light on or off" repeat=false { spawn "herald-os" "toggle" "nightlight"; }
     Mod+Ctrl+I hotkey-overlay-title="Stay awake on or off" repeat=false { spawn "herald-os" "toggle" "idle"; }
     Mod+Ctrl+Comma hotkey-overlay-title="Do not disturb on or off" repeat=false { spawn "herald-os" "toggle" "dnd"; }
+    Mod+Ctrl+H hotkey-overlay-title="Hide or show the pet" repeat=false { spawn "herald-os" "os" "pet.toggle"; }
 
     Mod+Ctrl+W hotkey-overlay-title="Wi-Fi" { spawn "herald-os" "panel" "wifi"; }
     Mod+Ctrl+B hotkey-overlay-title="Bluetooth" { spawn "herald-os" "panel" "bluetooth"; }

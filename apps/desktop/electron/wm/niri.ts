@@ -1,5 +1,6 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process'
-import type { WmAction, WmState, WmWindow, WmWorkspace } from '../../shared/ipc.ts'
+import net from 'node:net'
+import type { WmAction, WmLayout, WmState, WmWindow, WmWorkspace } from '../../shared/ipc.ts'
 import { log } from '../log.ts'
 import type { Compositor } from './compositor.ts'
 
@@ -115,6 +116,27 @@ export class NiriClient implements Compositor {
     })
   }
 
+  /**
+   * Move a floating window to `x`, `y`: logical pixels from the top-left of the output's working
+   * area, which for floating windows leaves out layer-shell panels but not niri's struts. Through
+   * niri's socket when there is one, as a dragged window moves many times a second.
+   */
+  async moveFloatingWindow(id: number, x: number, y: number): Promise<void> {
+    const socket = process.env.NIRI_SOCKET
+
+    if (socket) {
+      try {
+        await niriRequest(socket, moveFloatingWindowRequest(id, x, y))
+
+        return
+      } catch {
+        // `niri msg` below says what is wrong, if anything still is.
+      }
+    }
+
+    await this.raw(moveFloatingWindowArgs(id, x, y))
+  }
+
   private handle(line: string): void {
     let event: Record<string, unknown>
 
@@ -181,8 +203,7 @@ export class NiriClient implements Compositor {
         break
       }
       case 'WindowOpenedOrChanged': {
-        const raw = p.window as RawWindow
-        const w = toWindow(raw)
+        const w = toWindow(p.window as RawWindow)
         const isNew = !this.windows.has(w.id)
         this.windows.set(w.id, w)
 
@@ -190,7 +211,7 @@ export class NiriClient implements Compositor {
           this.openedAt.set(w.id, Date.now())
         }
 
-        this.untileMaximizedToEdges(raw, w)
+        this.untileMaximizedToEdges(w)
 
         if (w.focused) {
           for (const other of this.windows.values()) {
@@ -233,6 +254,17 @@ export class NiriClient implements Compositor {
 
         break
       }
+      case 'WindowLayoutsChanged': {
+        for (const [id, layout] of layoutChanges(p.changes)) {
+          const w = this.windows.get(id)
+
+          if (w) {
+            w.layout = layout
+          }
+        }
+
+        break
+      }
       default:
         return
     }
@@ -246,7 +278,7 @@ export class NiriClient implements Compositor {
    * struts. Window rules only affect the open state, so undo it here for foreign windows during
    * their first seconds; a user maximizing later is left alone.
    */
-  private untileMaximizedToEdges(raw: RawWindow, w: WmWindow): void {
+  private untileMaximizedToEdges(w: WmWindow): void {
     if (w.ours || w.floating || this.untiled.has(w.id)) {
       return
     }
@@ -257,13 +289,13 @@ export class NiriClient implements Compositor {
       return
     }
 
-    const size = raw.layout?.window_size
+    const size = w.layout
 
     if (!size) {
       return
     }
 
-    const coversOutput = this.outputSizes.some(([ow, oh]) => Math.abs(size[0] - ow) <= 2 && Math.abs(size[1] - oh) <= 2)
+    const coversOutput = this.outputSizes.some(([ow, oh]) => Math.abs(size.width - ow) <= 2 && Math.abs(size.height - oh) <= 2)
 
     if (coversOutput) {
       this.untiled.add(w.id)
@@ -306,7 +338,15 @@ export class NiriClient implements Compositor {
   }
 }
 
-interface RawWindow {
+/** niri's `WindowLayout`; older niri sends none. */
+interface RawLayout {
+  pos_in_scrolling_layout?: [number, number] | null
+  tile_size?: [number, number] | null
+  window_size?: [number, number] | null
+  tile_pos_in_workspace_view?: [number, number] | null
+}
+
+export interface RawWindow {
   id: number
   title: string | null
   app_id: string | null
@@ -315,7 +355,8 @@ interface RawWindow {
   is_focused: boolean
   is_floating: boolean
   is_urgent: boolean
-  layout?: { window_size?: [number, number] | null; tile_size?: [number, number] | null } | null
+  is_fullscreen?: boolean
+  layout?: RawLayout | null
 }
 
 interface RawWorkspace {
@@ -328,7 +369,7 @@ interface RawWorkspace {
   active_window_id: number | null
 }
 
-function toWindow(w: RawWindow): WmWindow {
+export function toWindow(w: RawWindow): WmWindow {
   return {
     id: w.id,
     title: w.title ?? '',
@@ -338,8 +379,98 @@ function toWindow(w: RawWindow): WmWindow {
     focused: Boolean(w.is_focused),
     floating: Boolean(w.is_floating),
     urgent: Boolean(w.is_urgent),
-    ours: w.pid === process.pid
+    ours: w.pid === process.pid,
+    layout: toLayout(w.layout),
+    ...(typeof w.is_fullscreen === 'boolean' ? { fullscreen: w.is_fullscreen } : {})
   }
+}
+
+function pair(value: unknown): [number, number] | null {
+  return Array.isArray(value) && value.length === 2 && value.every(n => typeof n === 'number' && Number.isFinite(n)) ? [value[0], value[1]] : null
+}
+
+export function toLayout(layout: unknown): WmLayout | null {
+  const raw = (layout && typeof layout === 'object' ? layout : {}) as RawLayout
+  const size = pair(raw.window_size)
+
+  if (!size) {
+    return null
+  }
+
+  const tile = pair(raw.tile_size) ?? size
+  const place = pair(raw.pos_in_scrolling_layout)
+  const at = pair(raw.tile_pos_in_workspace_view)
+
+  return {
+    width: size[0],
+    height: size[1],
+    x: at ? at[0] : null,
+    y: at ? at[1] : null,
+    column: place ? place[0] : null,
+    tile: place ? place[1] : null,
+    tileWidth: tile[0],
+    tileHeight: tile[1]
+  }
+}
+
+/** The window ids and layouts of a `WindowLayoutsChanged` event. */
+export function layoutChanges(changes: unknown): Array<[number, WmLayout | null]> {
+  return (Array.isArray(changes) ? changes : []).flatMap((change): Array<[number, WmLayout | null]> =>
+    Array.isArray(change) && typeof change[0] === 'number' ? [[change[0], toLayout(change[1])]] : []
+  )
+}
+
+export function moveFloatingWindowRequest(id: number, x: number, y: number): unknown {
+  return { Action: { MoveFloatingWindow: { id, x: { SetFixed: x }, y: { SetFixed: y } } } }
+}
+
+export function moveFloatingWindowArgs(id: number, x: number, y: number): string[] {
+  // `niri msg` takes a leading minus for a move relative to where the window is.
+  return ['move-floating-window', '--id', String(id), '-x', String(Math.max(0, x)), '-y', String(Math.max(0, y))]
+}
+
+/** One request on niri's socket: a JSON line out, a JSON line back; rejects with niri's error. */
+export function niriRequest(socket: string, request: unknown, timeoutMs = 2000): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const connection = net.createConnection(socket)
+    let buffer = ''
+    const finish = (error: Error | null, value?: unknown) => {
+      clearTimeout(timer)
+      connection.destroy()
+
+      if (error) {
+        reject(error)
+      } else {
+        resolve(value)
+      }
+    }
+    const timer = setTimeout(() => finish(new Error('niri did not answer')), timeoutMs)
+
+    connection.setEncoding('utf8')
+    connection.on('connect', () => connection.write(`${JSON.stringify(request)}\n`))
+    connection.on('data', (chunk: string) => {
+      buffer += chunk
+      const end = buffer.indexOf('\n')
+
+      if (end < 0) {
+        return
+      }
+
+      try {
+        const reply = JSON.parse(buffer.slice(0, end)) as { Ok?: unknown; Err?: unknown }
+
+        if ('Err' in reply) {
+          finish(new Error(String(reply.Err)))
+        } else {
+          finish(null, reply.Ok)
+        }
+      } catch {
+        finish(new Error('niri sent an unreadable reply'))
+      }
+    })
+    connection.on('error', error => finish(error))
+    connection.on('close', () => finish(new Error('niri closed the connection')))
+  })
 }
 
 function toWorkspace(ws: RawWorkspace): WmWorkspace {

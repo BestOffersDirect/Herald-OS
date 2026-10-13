@@ -4,6 +4,7 @@
 import type { EventAutomation } from './events.ts'
 import type { MenuBarLayout } from './menu-bar.ts'
 import type { OfficeApp } from './office/files.ts'
+import type { PetPrefs } from './pet.ts'
 import type { ColorScheme, ThemeColors } from './theme.ts'
 
 /** `waiting`: there is no Hermes Agent to start yet; the shell starts one as soon as it is installed. */
@@ -539,6 +540,8 @@ export interface HeraldOSPrefs {
   dockAutoHide?: boolean
   /** The name on the comments and notes the person adds in Herald Office, once they confirmed it; unset until then. */
   commentName?: string
+  /** The desktop pet as Herald shows it (which pet, its size and on or off are Hermes's settings). */
+  pet?: PetPrefs
   voice: VoicePrefs
   continuity: ContinuityPrefs
   crashHelp: CrashHelpPrefs
@@ -608,7 +611,23 @@ export interface WindowState {
 export type ShellMode = 'desktop' | 'panels'
 
 /** Which part of the shell a renderer window is. `window:<appId>` hosts one floating Hermes app. */
-export type ShellSurface = 'desktop' | 'menubar' | 'dock' | 'main' | 'command' | 'panel' | 'screensaver' | 'wallpaper' | 'emoji' | `window:${string}`
+export type ShellSurface = 'desktop' | 'menubar' | 'dock' | 'main' | 'command' | 'panel' | 'screensaver' | 'wallpaper' | 'emoji' | 'pet' | `window:${string}`
+
+/** Where niri has a window and how big it is, in logical pixels. */
+export interface WmLayout {
+  /** The window itself, without niri's border. */
+  width: number
+  height: number
+  /** The tile's top-left in the workspace's view; null where niri does not report it (it does for floating windows). */
+  x: number | null
+  y: number | null
+  /** A tile's column and its place in the column, from 1; null for a floating window. */
+  column: number | null
+  tile: number | null
+  /** The tile, border included. */
+  tileWidth: number
+  tileHeight: number
+}
 
 /** A window the compositor manages (any client, including the shell's own windows). */
 export interface WmWindow {
@@ -622,6 +641,10 @@ export interface WmWindow {
   urgent: boolean
   /** True for the shell's own windows (menu bar, dock, Hermes window, floating apps). */
   ours: boolean
+  /** niri only; null when niri does not report one. */
+  layout?: WmLayout | null
+  /** Only from a compositor that reports it. */
+  fullscreen?: boolean
 }
 
 export interface WmWorkspace {
@@ -987,7 +1010,29 @@ export const IPC = {
   officeRun: 'herald-os:office:run',
   /** Main -> an Office window: run this command here; the window answers on `officeRunReply`. */
   officeRunRequest: 'herald-os:office:run-request',
-  officeRunReply: 'herald-os:office:run-reply'
+  officeRunReply: 'herald-os:office:run-reply',
+
+  // The desktop pet (shared/pet.ts): Hermes's pet settings and spritesheets; in panels mode, the relay
+  // between the Hermes window, which works out what the pet shows, and the pet's own window.
+  petInfo: 'herald-os:pet:info',
+  petRefresh: 'herald-os:pet:refresh',
+  /** Main -> renderer: `PetInfo` changed (config.yaml or the pets folder). */
+  petInfoChanged: 'herald-os:pet:info-changed',
+  petSheet: 'herald-os:pet:sheet',
+  /** The Hermes window -> main: the latest `PetSnapshot`, which main hands on to the pet window as `petSnapshot`. */
+  petPublish: 'herald-os:pet:publish',
+  petSnapshot: 'herald-os:pet:snapshot',
+  /** The pet window -> main: a `PetAction`, which main hands on to the Hermes window as `petAction`. */
+  petAct: 'herald-os:pet:act',
+  petAction: 'herald-os:pet:action',
+  /** The pet window starts listening and asks for the last snapshot or cover again (`'snapshot' | 'cover'`). */
+  petReplay: 'herald-os:pet:replay',
+  petPlace: 'herald-os:pet:place',
+  petInteractive: 'herald-os:pet:interactive',
+  petVisible: 'herald-os:pet:visible',
+  petWorkArea: 'herald-os:pet:work-area',
+  /** Main -> the pet window: `PetCover`. */
+  petCover: 'herald-os:pet:cover'
 } as const
 
 /** Raw pixels for a project image or an export: RGBA layers, grayscale masks. */

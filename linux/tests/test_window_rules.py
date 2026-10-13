@@ -97,3 +97,29 @@ def test_the_audience_window_opens_full_screen_and_leaves_the_keys_to_the_presen
     assert "open-fullscreen true" in rules
     assert "open-focused false" in rules
     assert FLOATS not in rules
+
+
+def _last(rules, name):
+    """What a window ends up with for one property: niri lets a later rule override an earlier one."""
+    lines = [line for line in rules if line.split(" ", 1)[0] == name]
+    return lines[-1] if lines else None
+
+
+def test_the_pet_floats_above_the_dock_never_takes_the_keys_as_it_opens_and_has_no_frame():
+    title = re.search(r"pet: '([^']+)'", (DESKTOP / "electron" / "shell" / "mode.ts").read_text()).group(1)
+    for app_id in ("herald-os", "Herald OS"):
+        rules = props(app_id, title)
+        assert FLOATS in rules
+        assert _last(rules, "open-focused") == "open-focused false"
+        assert _last(rules, "default-floating-position") == 'default-floating-position x=24 y=104 relative-to="bottom-right"'
+        assert _last(rules, "border") == "border { off; }"
+        assert _last(rules, "focus-ring") == "focus-ring { off; }"
+        assert _last(rules, "shadow") == "shadow { off; }"
+        # Rounded or clipped like the shell's tiles, the sprite would lose its corners.
+        assert _last(rules, "geometry-corner-radius") == "geometry-corner-radius 0"
+        assert _last(rules, "clip-to-geometry") == "clip-to-geometry false"
+
+
+def test_super_ctrl_h_hides_or_shows_the_pet():
+    binds = [line.strip() for line in CONFIG.splitlines() if line.strip().startswith("Mod+Ctrl+H ")]
+    assert binds == ['Mod+Ctrl+H hotkey-overlay-title="Hide or show the pet" repeat=false { spawn "herald-os" "os" "pet.toggle"; }']

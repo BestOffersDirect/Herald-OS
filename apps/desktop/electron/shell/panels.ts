@@ -1,21 +1,20 @@
 import { BrowserWindow, ipcMain, screen, shell } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { IPC, type ShellCommand, type ShellSurface, type WmAction, type WmWindow } from '../../shared/ipc.ts'
+import { IPC, type ShellCommand, type ShellSurface, type WmAction, type WmState, type WmWindow } from '../../shared/ipc.ts'
 import { GUEST_PREFERENCES, lockDownPartition, WEB_PARTITION } from '../ipc/web.ts'
 import { log } from '../log.ts'
 import { audienceWindow } from '../office/presenter.ts'
 import { devServerUrl, isShellPage, rendererIndex } from '../paths.ts'
-import type { Compositor } from '../wm/compositor.ts'
 import { NiriClient } from '../wm/niri.ts'
 import { FocusHistory } from './focus.ts'
 import type { ShellHost } from './host.ts'
 import { FLOATING_APPS, shellMode, surfaceTitle } from './mode.ts'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const PANEL_TITLES = new Set((['menubar', 'dock', 'command', 'panel', 'screensaver', 'wallpaper'] as const).map(surfaceTitle))
+const PANEL_TITLES = new Set((['menubar', 'dock', 'command', 'panel', 'screensaver', 'wallpaper', 'pet'] as const).map(surfaceTitle))
 
-/** The menu bar, dock, overlays and wallpaper renderer: our windows that are not apps. */
+/** The menu bar, dock, overlays, wallpaper renderer and pet: our windows that are not apps. */
 function isPanel(win: WmWindow): boolean {
   return win.ours && PANEL_TITLES.has(win.title)
 }
@@ -25,6 +24,8 @@ const DOCK_SIZE = { width: 720, height: 84 }
 const COMMAND_SIZE = { width: 680, height: 560 }
 /** The menu bar's quick panels; the renderer shrinks the window to its content. */
 const PANEL_SIZE = { width: 380, height: 560 }
+/** The pet's window until its renderer sizes it to the pet (and its bubble or card). */
+const PET_SIZE = { width: 120, height: 120 }
 const MAIN_SIZE = { width: 1280, height: 800 }
 
 interface SurfaceWindowOptions {
@@ -44,7 +45,7 @@ interface SurfaceWindowOptions {
  */
 export class PanelShell implements ShellHost {
   /** The Herald OS session runs on niri: its window rules place these windows. */
-  readonly wm: Compositor = new NiriClient()
+  readonly wm = new NiriClient()
   private readonly windows = new Map<ShellSurface, BrowserWindow>()
   private readonly pending = new Map<ShellSurface, ShellCommand[]>()
   private readonly loaded = new Set<ShellSurface>()
@@ -72,7 +73,12 @@ export class PanelShell implements ShellHost {
 
     ipcMain.handle(IPC.wmGetState, () => this.wm.state())
     ipcMain.handle(IPC.wmAction, (_event, action: WmAction) => this.wm.action(action))
-    ipcMain.handle(IPC.shellOpen, (_event, surface: ShellSurface, command?: ShellCommand) => this.open(surface, command))
+    // The pet's window comes and goes with Hermes's pet setting (electron/pet/window.ts), not on a window's request.
+    ipcMain.handle(IPC.shellOpen, (_event, surface: ShellSurface, command?: ShellCommand) => {
+      if (surface !== 'pet') {
+        this.open(surface, command)
+      }
+    })
     ipcMain.handle(IPC.shellClose, (event, surface?: ShellSurface) => {
       const target = surface ?? this.surfaceOf(event.sender.id)
 
@@ -80,7 +86,11 @@ export class PanelShell implements ShellHost {
         this.close(target)
       }
     })
-    ipcMain.handle(IPC.shellRelay, (_event, target: ShellSurface, command: ShellCommand) => this.relay(target, command))
+    ipcMain.handle(IPC.shellRelay, (_event, target: ShellSurface, command: ShellCommand) => {
+      if (target !== 'pet' || this.surfaceWindow('pet')) {
+        this.relay(target, command)
+      }
+    })
     ipcMain.handle(IPC.shellResize, (event, width: number, height: number) => {
       const surface = this.surfaceOf(event.sender.id)
       const win = surface ? this.windows.get(surface) : undefined
@@ -100,9 +110,18 @@ export class PanelShell implements ShellHost {
   }
 
   mainWindow(): BrowserWindow | null {
-    const win = this.windows.get('main')
+    return this.surfaceWindow('main')
+  }
+
+  surfaceWindow(surface: ShellSurface): BrowserWindow | null {
+    const win = this.windows.get(surface)
 
     return win && !win.isDestroyed() ? win : null
+  }
+
+  /** The app window on the focused workspace that had the keys last: not the menu bar, the dock, an overlay or the pet. */
+  lastAppWindow(state: WmState): number | null {
+    return this.focus.back(state)
   }
 
   surfaceOf(webContentsId: number): ShellSurface | null {
@@ -130,7 +149,7 @@ export class PanelShell implements ShellHost {
       this.relay(surface, command)
     }
 
-    if (surface !== 'menubar' && surface !== 'dock' && surface !== 'wallpaper') {
+    if (surface !== 'menubar' && surface !== 'dock' && surface !== 'wallpaper' && surface !== 'pet') {
       void this.focusInCompositor(surface)
     }
   }
@@ -349,6 +368,8 @@ export class PanelShell implements ShellHost {
         return { width: size.width, height: size.height, resizable: false }
       case 'wallpaper':
         return { width: size.width, height: size.height, show: false, offscreen: true, focusable: false }
+      case 'pet':
+        return { ...PET_SIZE, transparent: true, resizable: false, focusable: false }
       case 'main':
       case 'desktop':
         return { ...MAIN_SIZE }

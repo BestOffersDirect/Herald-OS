@@ -4,6 +4,7 @@ import { type EventAutomation, isEventName } from '../shared/events.ts'
 import type { ContinuityPrefs, CrashHelpPrefs, HeraldOSPrefs } from '../shared/ipc.ts'
 import { normalizeMenuBar } from '../shared/menu-bar.ts'
 import { normalizeCommentName } from '../shared/office/comment-name.ts'
+import { normalizePetPrefs, PET_PREFS_DEFAULTS } from '../shared/pet.ts'
 import { normalizeVoicePrefs, VOICE_DEFAULTS } from '../shared/voice-prefs.ts'
 import { heraldOsDataDir } from './paths.ts'
 
@@ -14,6 +15,7 @@ const DEFAULTS: HeraldOSPrefs = {
   voice: VOICE_DEFAULTS,
   continuity: CONTINUITY_DEFAULTS,
   crashHelp: CRASH_HELP_DEFAULTS,
+  pet: PET_PREFS_DEFAULTS,
   fullscreenOnLaunch: true,
   reduceMotion: false,
   accent: 'blue',
@@ -46,6 +48,7 @@ export function readPrefs(): HeraldOSPrefs {
       voice: normalizeVoicePrefs(parsed.voice),
       continuity: normalizeContinuity(parsed.continuity),
       crashHelp: normalizeCrashHelp(parsed.crashHelp),
+      pet: normalizePetPrefs(parsed.pet),
       eventAutomations: normalizeEventAutomations(parsed.eventAutomations),
       commentName: normalizeCommentName(parsed.commentName) || undefined,
       ...(parsed.menuBar ? { menuBar: normalizeMenuBar(parsed.menuBar) } : {})
@@ -91,6 +94,7 @@ export function writePrefs(patch: Partial<HeraldOSPrefs>): HeraldOSPrefs {
     voice: normalizeVoicePrefs({ ...current.voice, ...(patch.voice ?? {}) }),
     continuity: normalizeContinuity({ ...current.continuity, ...(patch.continuity ?? {}) }),
     crashHelp: normalizeCrashHelp({ ...current.crashHelp, ...(patch.crashHelp ?? {}) }),
+    pet: normalizePetPrefs({ ...current.pet, ...(patch.pet ?? {}) }),
     ...('commentName' in patch ? { commentName: normalizeCommentName(patch.commentName) || undefined } : {}),
     ...(patch.menuBar ? { menuBar: normalizeMenuBar({ ...current.menuBar, ...patch.menuBar }) } : {})
   }
