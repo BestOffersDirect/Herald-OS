@@ -14,6 +14,9 @@ import { startBuild } from './studio-actions.ts'
 import { $wake } from './wake.ts'
 import { $webWindows, closeWebWindow, openWebWindow } from './web-windows.ts'
 import { $page, $windows, openApp, showPage } from './windows.ts'
+import { $petPrefs } from '../features/pet/actions.ts'
+import { $petInfo } from '../features/pet/info.ts'
+import { $petSnapshot, petAct } from '../features/pet/transport.ts'
 
 /** Installed only in development builds (see boot.ts). */
 export function installDebugHook(): void {
@@ -41,6 +44,12 @@ export function installDebugHook(): void {
       auth: { request: requestHermesLogin, state: () => $hermesAuth.get() },
       web: { open: openWebWindow, close: closeWebWindow, state: () => $webWindows.get() },
       studio: { open: openStudio, build: startBuild, preview: setPreview, state: () => $studios.get() },
+      pet: {
+        info: () => $petInfo.get(),
+        snapshot: () => $petSnapshot.get(),
+        prefs: () => $petPrefs.get(),
+        act: petAct
+      },
       voice: {
         start: startVoice,
         end: endConversation,

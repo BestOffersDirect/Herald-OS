@@ -12,6 +12,7 @@ const ScreensaverSurface = lazy(() => import('./surfaces/ScreensaverSurface.tsx'
 const WallpaperSurface = lazy(() => import('./surfaces/WallpaperSurface.tsx').then(m => ({ default: m.WallpaperSurface })))
 const FloatingSurface = lazy(() => import('./surfaces/FloatingSurface.tsx').then(m => ({ default: m.FloatingSurface })))
 const EmojiSurface = lazy(() => import('./surfaces/EmojiSurface.tsx').then(m => ({ default: m.EmojiSurface })))
+const PetSurface = lazy(() => import('../features/pet/PetSurface.tsx').then(m => ({ default: m.PetSurface })))
 
 const SURFACES: Record<string, ComponentType> = {
   menubar: MenuBarSurface,
@@ -21,7 +22,8 @@ const SURFACES: Record<string, ComponentType> = {
   panel: StatusPanelSurface,
   screensaver: ScreensaverSurface,
   wallpaper: WallpaperSurface,
-  emoji: EmojiSurface
+  emoji: EmojiSurface,
+  pet: PetSurface
 }
 
 /** Picks what this renderer window shows: the whole desktop (desktop mode) or one panels-mode surface. */

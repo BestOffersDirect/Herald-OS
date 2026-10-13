@@ -108,6 +108,8 @@
   --z-wallpaper: 0;
   --z-windows: 10;
   --z-dock: 40;
+  /* The pet sits above the windows and the dock, under the menu bar, its panels and overlays. */
+  --z-pet: 42;
   --z-menubar: 45;
   --z-panel: 50;
   --z-overlay: 60;
@@ -182,7 +184,10 @@ body,
 :root[data-shell-mode='panels'][data-surface='command'] #root,
 :root[data-shell-mode='panels'][data-surface='panel'],
 :root[data-shell-mode='panels'][data-surface='panel'] body,
-:root[data-shell-mode='panels'][data-surface='panel'] #root {
+:root[data-shell-mode='panels'][data-surface='panel'] #root,
+:root[data-shell-mode='panels'][data-surface='pet'],
+:root[data-shell-mode='panels'][data-surface='pet'] body,
+:root[data-shell-mode='panels'][data-surface='pet'] #root {
   background: transparent;
 }
 

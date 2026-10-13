@@ -27,6 +27,10 @@ import { bindBridgeSetupNotice } from './tool-search.ts'
 import { bindUsage } from './usage.ts'
 import { bindVoice } from './voice.ts'
 import { bindWake } from './wake.ts'
+import { surface } from './shell.ts'
+import { bindPetBrain } from '../features/pet/brain.ts'
+import { bindPetInfo, bindPetSheet } from '../features/pet/info.ts'
+import { bindPetSnapshots } from '../features/pet/transport.ts'
 
 const BOOT_FLAG = '__heraldOSBooted'
 
@@ -39,6 +43,19 @@ export function bootRenderer(): void {
   }
 
   global[BOOT_FLAG] = true
+
+  // The pet's own window (panels mode) only draws what the Hermes window sends it: no gateway of its own.
+  if (surface === 'pet') {
+    bindShell()
+    bindBackendStores()
+    bindBranding()
+    bindPetInfo()
+    bindPetSheet()
+    bindPetSnapshots()
+
+    return
+  }
+
   registerOsCommands()
   bindEditTarget()
   bindShell()
@@ -65,11 +82,17 @@ export function bootRenderer(): void {
   bindDictation()
   bindPlugins()
   bindBranding()
+  bindPetInfo()
 
-  // The Hermes window owns the notification list; the history follows it.
+  // The Hermes window owns the notification list; the history follows it. It is the pet's brain too.
   if (isMainSurface) {
     bindNotificationHistory()
     bindBridgeSetupNotice()
+    bindPetBrain()
+  }
+
+  if (surface === 'desktop') {
+    bindPetSheet()
   }
 
   let lastEpoch = 0

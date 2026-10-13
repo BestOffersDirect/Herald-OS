@@ -24,6 +24,13 @@ describe('normalizeMenuBar', () => {
     expect(visibleMenuBarItems(layout)).not.toContain('battery')
   })
 
+  it('puts the pet switch beside the voice item in a layout saved before it existed', () => {
+    const saved = ['clock', 'notifications', 'battery', 'sound', 'bluetooth', 'wifi', 'usage', 'indicators', 'voice', 'widgets', 'search']
+    const layout = normalizeMenuBar({ order: saved, hidden: ['widgets'] })
+    expect(layout.order.indexOf('pet')).toBe(layout.order.indexOf('voice') + 1)
+    expect(visibleMenuBarItems(layout)).toContain('pet')
+  })
+
   it('keeps only known clock settings', () => {
     expect(normalizeMenuBar({ clock: { hours: '24', seconds: true, date: 'none' } }).clock).toEqual({ hours: '24', seconds: true, date: 'none' })
     expect(normalizeMenuBar({ clock: { hours: 13, seconds: 'yes', date: 'medium' } }).clock).toEqual({ hours: 'system', seconds: false, date: 'short' })
@@ -46,6 +53,8 @@ describe('resolveMenuBarItem', () => {
     expect(resolveMenuBarItem('Wi-Fi')).toBe('wifi')
     expect(resolveMenuBarItem('volume')).toBe('sound')
     expect(resolveMenuBarItem('Plan usage')).toBe('usage')
+    expect(resolveMenuBarItem('mascot')).toBe('pet')
+    expect(resolveMenuBarItem('Pet')).toBe('pet')
     expect(resolveMenuBarItem('dock')).toBeNull()
   })
 })

@@ -22,6 +22,7 @@ import { toggleCommandBar } from '../store/surface.ts'
 import { $systemStats, useNetworkStatus, useSystemStats } from '../store/system.ts'
 import { $focusedTitle } from '../store/windows.ts'
 import { VoiceIndicator } from '../features/voice/VoiceIndicator.tsx'
+import { PetMenuBarToggle } from '../features/pet/PetMenuBarToggle.tsx'
 
 export function useClock(intervalMs = 10_000): Date {
   const [now, setNow] = useState(() => new Date())
@@ -66,6 +67,7 @@ export function MenuBarStatus({ onSearch, onBell, bellActive }: { onSearch: () =
     ),
     widgets: <MenuBarWidgets />,
     voice: <VoiceIndicator />,
+    pet: <PetMenuBarToggle />,
     indicators: <SwitchIndicators />,
     usage: <UsageMeter />,
     wifi: (

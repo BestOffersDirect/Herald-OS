@@ -13,6 +13,7 @@ import { Filterable, markSaved, SettingsGroup, SettingsRow } from './shared.tsx'
 const HINTS: Partial<Record<MenuBarItem, string>> = {
   widgets: 'Widgets you turned on for the menu bar',
   voice: 'While Hermes is listening or speaking',
+  pet: 'While a pet is on: puts it away for a screen share, and brings it back',
   indicators: 'Recording, dictation and switches that are on. Always shown.',
   usage: 'How much of your model plan is used',
   battery: 'On computers with a battery'

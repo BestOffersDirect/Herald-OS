@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { IconAccessible, IconApps, IconBell, IconCircleCheckFilled, IconPuzzle, IconDatabase, IconGauge, IconInfoCircle, IconListDetails, IconMicrophone, IconPalette, IconPlayerPause, IconRobot, IconSettings, IconShield, IconWifi } from '@tabler/icons-react'
+import { IconAccessible, IconApps, IconBell, IconCircleCheckFilled, IconPuzzle, IconDatabase, IconGauge, IconInfoCircle, IconListDetails, IconMicrophone, IconPalette, IconPaw, IconPlayerPause, IconRobot, IconSettings, IconShield, IconWifi } from '@tabler/icons-react'
 import { type ComponentType, useEffect, useState } from 'react'
 import { GlassButton, PageHeader, SearchField } from '../../components/ui/glass.tsx'
 import { cn } from '../../lib/cn.ts'
@@ -15,6 +15,7 @@ import { NotificationsSection } from './sections/NotificationsSection.tsx'
 import { PrivacySection } from './sections/PrivacySection.tsx'
 import { $settingsFocus, $settingsSavedAt, type SectionId, SettingsFilterContext } from './sections/shared.tsx'
 import { PluginsSection } from './sections/PluginsSection.tsx'
+import { PetSection } from '../pet/PetSection.tsx'
 import { SoftwareSection } from './sections/SoftwareSection.tsx'
 import { StorageSection } from './sections/StorageSection.tsx'
 import { UsageSection } from './sections/UsageSection.tsx'
@@ -30,6 +31,7 @@ import { VoiceSection } from './sections/VoiceSection.tsx'
 const SECTIONS: { id: SectionId; label: string; icon: ComponentType<{ size?: number; stroke?: number }>; view: ComponentType }[] = [
   { id: 'general', label: 'General', icon: IconSettings, view: GeneralSection },
   { id: 'appearance', label: 'Appearance', icon: IconPalette, view: AppearanceSection },
+  { id: 'pet', label: 'Pet', icon: IconPaw, view: PetSection },
   { id: 'software', label: 'Software', icon: IconApps, view: SoftwareSection },
   { id: 'plugins', label: 'Plugins', icon: IconPuzzle, view: PluginsSection },
   { id: 'agents', label: 'Hermes & agents', icon: IconRobot, view: AgentsSection },

@@ -14,6 +14,7 @@ import { memoryCommands } from './memory.ts'
 import { navigationCommands } from './navigation.ts'
 import { officeCommands } from './office.ts'
 import { openCommands } from './open.ts'
+import { petCommands } from './pet.ts'
 import { studioCommands } from './studio.ts'
 import { screenCommands } from './screen.ts'
 import { sheetsCommands } from './sheets.ts'
@@ -55,7 +56,8 @@ export const commandGroups: Record<string, readonly OsCommand[]> = {
   office: officeCommands,
   docs: docsCommands,
   sheets: sheetsCommands,
-  slides: slidesCommands
+  slides: slidesCommands,
+  pet: petCommands
 }
 
 let registered = false

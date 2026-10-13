@@ -3,7 +3,7 @@
  * main (which keeps the preference tidy), the bar, Settings and the commands; pure and tested.
  */
 
-export const MENU_BAR_ITEMS = ['search', 'widgets', 'voice', 'indicators', 'usage', 'wifi', 'bluetooth', 'sound', 'battery', 'notifications', 'clock'] as const
+export const MENU_BAR_ITEMS = ['search', 'widgets', 'voice', 'pet', 'indicators', 'usage', 'wifi', 'bluetooth', 'sound', 'battery', 'notifications', 'clock'] as const
 
 export type MenuBarItem = (typeof MENU_BAR_ITEMS)[number]
 
@@ -11,6 +11,7 @@ export const MENU_BAR_LABELS: Record<MenuBarItem, string> = {
   search: 'Search',
   widgets: 'Widgets',
   voice: 'Voice',
+  pet: 'Pet',
   indicators: 'Status lights',
   usage: 'Plan usage',
   wifi: 'Wi-Fi',
@@ -33,6 +34,8 @@ const ALIASES: Record<string, MenuBarItem> = {
   time: 'clock',
   date: 'clock',
   mic: 'voice',
+  mascot: 'pet',
+  paw: 'pet',
   lights: 'indicators',
   status: 'indicators',
   plan: 'usage'

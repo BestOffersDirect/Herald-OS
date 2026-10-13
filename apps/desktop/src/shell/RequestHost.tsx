@@ -4,16 +4,20 @@ import { IconKey, IconLock, IconMicrophone, IconQuestionMark, IconShieldCheck } 
 import { useState } from 'react'
 import { Button } from '../components/ui/button.tsx'
 import { Badge } from '../components/ui/primitives.tsx'
+import { type ApprovalShape, approvalFacts } from '../lib/approval-choices.ts'
 import { deviceNoun } from '../lib/platform-labels.ts'
+import { $petHeldApproval } from '../features/pet/transport.ts'
 import { $pendingRequests, type PendingRequest, resolveRequest } from '../store/requests.ts'
 import { $voiceActive, $voiceSessionId } from '../store/voice.ts'
 
 /**
  * One host for every server->client question. Cards stack bottom-right; the oldest is on top so
- * the agent thread that has waited longest unblocks first. Gestures never grant approval.
+ * the agent thread that has waited longest unblocks first. Gestures never grant approval. An
+ * approval the desktop pet is holding up stays with the pet.
  */
 export function RequestHost() {
-  const pending = useStore($pendingRequests)
+  const held = useStore($petHeldApproval)
+  const pending = useStore($pendingRequests).filter(entry => entry.request.id !== held)
 
   if (pending.length === 0) {
     return null
@@ -46,31 +50,19 @@ function RequestCard({ entry }: { entry: PendingRequest }) {
 
 const CHOICE_LABEL: Record<ApprovalChoice, string> = { once: 'Allow once', session: 'Allow this session', always: 'Always allow', deny: 'Deny' }
 
-/** Upstream labels plugin-gated approvals `<tool> (plugin approval rule)`; the tool name is what the user needs. */
-const PLUGIN_RULE_RE = /^<([a-z0-9_]+)> \(plugin approval rule\)$/i
-/** Bridge actions that must never be pre-authorised; the plugin already rotates their rule key, this hides the misleading button. */
-const BRIDGE_DESTRUCTIVE = new Set(['system_kill_process'])
-const DESTRUCTIVE_SUMMARY_RE = /^(trash|force quit|force kill|terminate|quit)\b/i
+export type ApprovalCardParams = ApprovalShape & Pick<Partial<ApprovalRequestParams>, 'session_id' | 'gateway_session_id'>
 
-function ApprovalCard({ id, params }: { id: string; params: ApprovalRequestParams }) {
+/**
+ * The approval card, here and in the pet's hands. `onChoice` routes the answer (the pet's goes to the
+ * window that holds the request); `voiceHint` says whether a spoken answer counts when this window
+ * cannot tell; the pet's card never takes the focus, so a key pressed elsewhere cannot answer it.
+ */
+export function ApprovalCard({ id, params, onChoice, voiceHint, autoFocus = true }: { id: string; params: ApprovalCardParams; onChoice?: (choice: ApprovalChoice) => void; voiceHint?: boolean; autoFocus?: boolean }) {
   const voiceActive = useStore($voiceActive)
   const voiceSession = useStore($voiceSessionId)
   // A running conversation on this card's session takes a spoken "yes" (allow once) or "no".
-  const answerByVoice = voiceActive && voiceSession !== null && (params.session_id === voiceSession || params.gateway_session_id === voiceSession)
-  const bridgeTool = PLUGIN_RULE_RE.exec(params.command ?? '')?.[1] ?? null
-  const toolName = params.tool_name ?? bridgeTool
-  const destructive = Boolean(bridgeTool) && (BRIDGE_DESTRUCTIVE.has(bridgeTool!) || DESTRUCTIVE_SUMMARY_RE.test(params.description ?? ''))
-  const choices = (params.choices?.length ? params.choices : (['once', 'deny'] as ApprovalChoice[])).filter(choice => {
-    if (choice === 'always') {
-      return params.allow_permanent !== false && !destructive
-    }
-
-    if (choice === 'session') {
-      return params.allow_session !== false && !destructive
-    }
-
-    return true
-  })
+  const answerByVoice = voiceHint ?? (voiceActive && voiceSession !== null && (params.session_id === voiceSession || params.gateway_session_id === voiceSession))
+  const { bridgeTool, toolName, destructive, choices } = approvalFacts(params)
 
   return (
     <div className="flex flex-col gap-3">
@@ -101,8 +93,8 @@ function ApprovalCard({ id, params }: { id: string; params: ApprovalRequestParam
             key={choice}
             variant={choice === 'deny' ? 'danger' : choice === 'once' ? 'primary' : 'secondary'}
             size="sm"
-            autoFocus={choice === 'once'}
-            onClick={() => resolveRequest(id, { choice })}
+            autoFocus={autoFocus && choice === 'once'}
+            onClick={() => (onChoice ? onChoice(choice) : resolveRequest(id, { choice }))}
           >
             {CHOICE_LABEL[choice]}
           </Button>

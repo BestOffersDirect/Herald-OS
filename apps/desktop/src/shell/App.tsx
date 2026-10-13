@@ -49,6 +49,14 @@ export function App() {
         return
       }
 
+      // Cmd+Ctrl+H: put the pet away or bring it back (Mod+Ctrl+H in niri on Linux).
+      if (event.metaKey && event.ctrlKey && key === 'h') {
+        event.preventDefault()
+        void runCommand('pet.toggle', {}, { source: 'shortcut' })
+
+        return
+      }
+
       if (meta && event.key === '\\') {
         event.preventDefault()
         toggleSidebar()

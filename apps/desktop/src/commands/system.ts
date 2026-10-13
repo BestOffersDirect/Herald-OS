@@ -134,7 +134,7 @@ export const systemCommands: readonly OsCommand[] = [
   {
     id: 'settings.open',
     title: 'Open Settings',
-    description: 'Open Settings, optionally at a section (general, appearance, agents, usage, voice, privacy, notifications, network, storage, accessibility, about).',
+    description: 'Open Settings, optionally at a section (general, appearance, pet, agents, usage, voice, privacy, notifications, network, storage, accessibility, about).',
     tier: 'read',
     args: [
       { name: 'section', type: 'string', description: 'Section name' },

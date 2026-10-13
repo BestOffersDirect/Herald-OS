@@ -22,6 +22,7 @@ import { ActionHud, OsHighlighter } from '../features/voice/ActionHud.tsx'
 import { VoiceOrb } from '../features/voice/VoiceOrb.tsx'
 import { FirstRunSetup } from '../features/setup/FirstRunSetup.tsx'
 import { WidgetWindow } from '../features/plugins/PluginSlots.tsx'
+import { PetOverlay } from '../features/pet/PetOverlay.tsx'
 
 const TerminalSurface = lazy(() => import('../features/terminal/TerminalSurface.tsx').then(m => ({ default: m.TerminalSurface })))
 const SystemSurface = lazy(() => import('../features/system/SystemSurface.tsx').then(m => ({ default: m.SystemSurface })))
@@ -115,6 +116,7 @@ export function Desktop() {
         )}
       </div>
       <Dock />
+      <PetOverlay />
       <VoiceOrb offsetClass="bottom-24" />
       <ActionHud offsetClass="top-12" />
       <OsHighlighter />
