@@ -125,10 +125,11 @@ jobs:
           echo "${{ github.token }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
           sudo podman pull "$IMAGE:$CHANNEL-${{ matrix.arch }}"
           mkdir -p output
+          # Pinned to the builder's last multi-arch build: its latest tag became amd64-only on 13 October 2026.
           sudo podman run --rm --privileged --pull=newer --security-opt label=type:unconfined_t \
             -v ./output:/output -v "./linux/image/${{ matrix.config }}:/config.toml:ro" \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
-            quay.io/centos-bootc/bootc-image-builder:latest \
+            quay.io/centos-bootc/bootc-image-builder@sha256:2b52843ea2bfda73b0a08d97e76b734393b1d3a804681b9fabb26723bd3a2f0b \
             --type ${{ matrix.type }} --rootfs btrfs --local "$IMAGE:$CHANNEL-${{ matrix.arch }}"
       - name: Name, compress and split it
         run: |
