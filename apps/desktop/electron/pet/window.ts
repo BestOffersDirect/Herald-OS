@@ -299,6 +299,9 @@ export class PetWindow {
     const [width, height] = win.getSize()
 
     if (width !== placement.width || height !== placement.height) {
+      // niri holds a Wayland window to its size hints, so they move with every new size.
+      win.setMinimumSize(placement.width, placement.height)
+      win.setMaximumSize(placement.width, placement.height)
       win.setSize(placement.width, placement.height)
     }
 

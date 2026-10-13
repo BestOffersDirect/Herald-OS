@@ -27,6 +27,7 @@ const MENU_BAR = 30
 const DOCK = 84
 /** Room around the pet and its bubble for their shadows. */
 const PAD = 10
+const EXTRAS_PAD = 22
 const STEP_MS = 50
 const DRAG_MS = 33
 const LINGER_MS = 1600
@@ -124,7 +125,9 @@ function WindowPet({ sheet, scale, snapshot, prefs, output, wm }: { sheet: Loade
   const walk = useStepWalk(goal, reduced || drag !== null)
   const extras = extrasOf(snapshot, ui, !walk.moving)
   const layout = extrasLayout(goal, size, area)
-  const placement: PetWindowPlacement = windowFor(walk.point, size, group, layout, PAD)
+  // The window's edge cuts off what is drawn past it: room for the shadow of a bubble or a card.
+  const pad = extras ? EXTRAS_PAD : PAD
+  const placement: PetWindowPlacement = windowFor(walk.point, size, group, layout, pad)
   const activitySince = useSince(snapshot.activity)
   const { pose, rest } = petPose(snapshot, walk.dir, activitySince, { dragging: drag !== null, dropping })
   const poseSince = useSince(pose)
@@ -327,7 +330,7 @@ function WindowPet({ sheet, scale, snapshot, prefs, output, wm }: { sheet: Loade
         groupRef={groupRef}
         inputRef={inputRef}
         className="absolute"
-        style={{ left: PAD, top: PAD }}
+        style={{ left: pad, top: pad }}
       />
     </div>
   )

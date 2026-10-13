@@ -369,7 +369,8 @@ export class PanelShell implements ShellHost {
       case 'wallpaper':
         return { width: size.width, height: size.height, show: false, offscreen: true, focusable: false }
       case 'pet':
-        return { ...PET_SIZE, transparent: true, resizable: false, focusable: false }
+        // Resizable so its size hints can follow the pet (electron/pet/window.ts); niri gives it no frame to drag.
+        return { ...PET_SIZE, transparent: true, resizable: true, focusable: false }
       case 'main':
       case 'desktop':
         return { ...MAIN_SIZE }

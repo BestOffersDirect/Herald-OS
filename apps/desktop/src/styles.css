@@ -191,6 +191,11 @@ body,
   background: transparent;
 }
 
+/* The pet's own window is only as big as the pet and what it holds: a short shadow fits inside it. */
+:root[data-shell-mode='panels'][data-surface='pet'] {
+  --shadow-float: 0 2px 6px rgba(0, 8, 40, 0.35), 0 6px 12px rgba(0, 6, 40, 0.4);
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-fg);
