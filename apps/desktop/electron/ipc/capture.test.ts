@@ -17,11 +17,13 @@ const run = vi.hoisted(() => vi.fn(async (_command: string, args: string[]) => {
 
   return { code: 0, stdout: '', stderr: '' }
 }))
-const readImageMac = vi.hoisted(() => vi.fn(async () => ['Order 4471']))
+const readImageMac = vi.hoisted(() => vi.fn(async (_file: string, _mode: string) => ['Order 4471']))
+const copyConcealedMac = vi.hoisted(() => vi.fn(async (_text: string) => undefined))
+const writeText = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { relaunch: electron.relaunch, quit: electron.quit },
-  clipboard: { writeText: vi.fn() },
+  clipboard: { writeText },
   ClipboardItem: class {},
   dialog: { showMessageBox: electron.showMessageBox },
   ipcMain: { handle: (channel: string, handler: (...args: unknown[]) => unknown) => electron.handlers.set(channel, handler) },
@@ -30,13 +32,13 @@ vi.mock('electron', () => ({
   systemPreferences: { getMediaAccessStatus: () => electron.status, askForMediaAccess: vi.fn() }
 }))
 vi.mock('../platform/exec.ts', () => ({ run }))
-vi.mock('../platform/mac-tools.ts', () => ({ pickColourMac: vi.fn(), readImageMac }))
+vi.mock('../platform/mac-tools.ts', () => ({ copyConcealedMac, pickColourMac: vi.fn(), readImageMac }))
 vi.mock('../i18n.ts', () => ({ menuLanguage: () => electron.language }))
 vi.mock('../attachments.ts', () => ({ allowAttachments: vi.fn() }))
 vi.mock('../log.ts', () => ({ log: vi.fn() }))
 
 const { IPC } = await import('../../shared/ipc.ts')
-const { captureRegion, captureScreenshot, capturesDir, registerCaptureIpc, resetScreenRecordingCheck } = await import('./capture.ts')
+const { captureRegion, captureScreenshot, capturesDir, QR_NOT_COPIED, registerCaptureIpc, resetScreenRecordingCheck } = await import('./capture.ts')
 
 const platform = process.platform
 const blocked = /^Herald OS needs Screen Recording permission\. Turn on Herald OS in System Settings > Privacy & Security > Screen & System Audio Recording/
@@ -50,6 +52,8 @@ beforeEach(() => {
   electron.language = 'en'
   run.mockClear()
   readImageMac.mockClear()
+  copyConcealedMac.mockReset()
+  writeText.mockClear()
   electron.showMessageBox.mockClear()
   electron.openExternal.mockClear()
   electron.relaunch.mockClear()
@@ -197,5 +201,77 @@ describe('the Screen Recording check on macOS', () => {
     await expect(electron.handlers.get(IPC.captureRegion)!({})).rejects.toThrow(blocked)
     await expect(electron.handlers.get(IPC.captureScreenshot)!({}, 'region')).rejects.toThrow(blocked)
     expect(interactive()).toHaveLength(0)
+  })
+})
+
+describe('the QR and text readers on macOS', () => {
+  const OTP = 'otpauth://totp/GitHub:alice?secret=JBSWY3DPEHPK3PXP&issuer=GitHub'
+
+  beforeEach(() => {
+    electron.status = 'granted'
+  })
+
+  it('copies a QR code marked as concealed, and hands the renderer only a description', async () => {
+    readImageMac.mockResolvedValueOnce([OTP])
+    const result = await electron.handlers.get(IPC.captureTool)!({}, 'qr')
+
+    expect(result).toEqual({ codes: 1, qr: { kind: 'otp', caption: '2FA setup code copied', description: 'a 2FA setup code for GitHub' } })
+    expect(JSON.stringify(result)).not.toContain('JBSWY3DPEHPK3PXP')
+    expect(readImageMac.mock.calls[0][1]).toBe('codes')
+    expect(copyConcealedMac).toHaveBeenCalledWith(OTP)
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it('copies nothing when the selection has several codes', async () => {
+    readImageMac.mockResolvedValueOnce(['https://example.com', 'WIFI:S:Home;T:WPA;P:hunter22;;'])
+    const result = await electron.handlers.get(IPC.captureTool)!({}, 'qr')
+
+    expect(result).toEqual({ codes: 2 })
+    expect(copyConcealedMac).not.toHaveBeenCalled()
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it('counts the same code read twice once', async () => {
+    readImageMac.mockResolvedValueOnce(['https://example.com/menu', 'https://example.com/menu'])
+
+    expect(await electron.handlers.get(IPC.captureTool)!({}, 'qr')).toMatchObject({ codes: 1, qr: { kind: 'link', text: 'https://example.com/menu' } })
+    expect(copyConcealedMac).toHaveBeenCalledWith('https://example.com/menu')
+  })
+
+  it('reports no code without copying anything', async () => {
+    readImageMac.mockResolvedValueOnce([])
+
+    expect(await electron.handlers.get(IPC.captureTool)!({}, 'qr')).toEqual({ codes: 0 })
+    expect(copyConcealedMac).not.toHaveBeenCalled()
+  })
+
+  it.each([OTP, 'WIFI:S:Home;T:WPA;P:hunter22;;', 'https://example.com/reset?token=0000aaaa1111bbbb', 'ab12cd34ef56', '4111 1111 1111 1111', 'https://us02web.zoom.us/j/85512345678?pwd=dGhpc2lzZmFrZTEyMw.1'])('refuses a secret it cannot copy concealed, rather than copy it plainly: %s', async code => {
+    readImageMac.mockResolvedValueOnce([code])
+    copyConcealedMac.mockRejectedValueOnce(new Error('osascript failed'))
+
+    const error = await Promise.resolve(electron.handlers.get(IPC.captureTool)!({}, 'qr')).then(
+      () => null,
+      (failure: Error) => failure
+    )
+
+    expect(error?.message).toBe(QR_NOT_COPIED)
+    expect(error?.message).not.toContain(code)
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it.each(['https://example.com/menu', 'Table 4'])('still copies a link or text plainly when the concealed copy fails, so pasting works: %s', async code => {
+    readImageMac.mockResolvedValueOnce([code])
+    copyConcealedMac.mockRejectedValueOnce(new Error('osascript failed'))
+
+    expect(await electron.handlers.get(IPC.captureTool)!({}, 'qr')).toMatchObject({ codes: 1, qr: { text: code } })
+    expect(writeText).toHaveBeenCalledWith(code)
+  })
+
+  it('copies text read off the screen as before', async () => {
+    readImageMac.mockResolvedValueOnce(['Order 4471'])
+
+    expect(await electron.handlers.get(IPC.captureTool)!({}, 'text')).toEqual({ text: 'Order 4471', lines: 1 })
+    expect(writeText).toHaveBeenCalledWith('Order 4471')
+    expect(copyConcealedMac).not.toHaveBeenCalled()
   })
 })

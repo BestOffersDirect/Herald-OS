@@ -835,6 +835,242 @@ def test_plugin_add_waits_for_the_clone_and_says_it_is_off(monkeypatch, capsys):
     assert stopped.value.code == 2
 
 
+QR_CASES = json.loads((ROOT / "apps" / "desktop" / "shared" / "qr-cases.json").read_text())
+
+
+@pytest.mark.parametrize("case", QR_CASES, ids=lambda case: f"{case['kind']}:{case['text'][:24]}")
+def test_qr_contents_are_described_the_way_the_shell_describes_them(case):
+    reading = cli.describe_qr(case["text"])
+    assert reading["kind"] == case["kind"]
+    assert reading["caption"] == case["caption"]
+    assert reading["description"] == case["description"]
+    assert reading.get("link") == case.get("link")
+    if case.get("full"):
+        assert reading["text"] == case["text"].strip()
+    else:
+        assert "text" not in reading
+        for secret in case["hidden"]:
+            assert secret not in json.dumps(reading, ensure_ascii=False)
+
+
+def zbar_xml(*symbols: str) -> bytes:
+    """zbarimg --xml output (0.23) for these symbols; each is a CDATA body or a full <data> element."""
+    body = "".join(
+        f"<symbol type='QR-Code' quality='1' orientation='UP'><polygon points='+31,+31 +31,+264 +265,+265 +264,+31'/>"
+        + (symbol if symbol.startswith("<data") else f"<data><![CDATA[{symbol}]]></data>")
+        + "</symbol>\n"
+        for symbol in symbols
+    )
+    index = f"<index num='0'>\n{body}</index>\n" if symbols else ""
+    return f"<barcodes xmlns='http://zbar.sourceforge.net/2008/barcode'>\n<source href='-'>\n{index}</source>\n</barcodes>\n".encode()
+
+
+def qr_scan(monkeypatch, *decoded: str, sensitive_ok: bool = True):
+    """Run capture_qr against a fake slurp, grim, zbarimg and wl-copy; returns (copies, notifications)."""
+    copies: list[tuple[list[str], bytes]] = []
+    notes: list[tuple[str, str]] = []
+
+    def run(argv, **kwargs):
+        if argv[0] == "grim":
+            return subprocess.CompletedProcess(argv, 0, b"png", b"")
+        if argv[0] == "zbarimg":
+            assert argv == ["zbarimg", "--xml", "-q", "-"]
+            return subprocess.CompletedProcess(argv, 0 if decoded else 4, zbar_xml(*decoded), b"")
+        if argv[0] == "wl-copy":
+            copies.append((argv, kwargs.get("input")))
+            assert kwargs.get("stdout") is subprocess.DEVNULL and kwargs.get("stderr") is subprocess.DEVNULL
+            return subprocess.CompletedProcess(argv, 0 if sensitive_ok or "--sensitive" not in argv else 1)
+        raise AssertionError(f"unexpected {argv}")
+
+    monkeypatch.setattr(cli, "need", lambda *tools: None)
+    monkeypatch.setattr(cli, "sh", lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "10,10 100x100\n", ""))
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    monkeypatch.setattr(cli, "notify", lambda title, body="": notes.append((title, body)))
+    return copies, notes
+
+
+OTP = "otpauth://totp/GitHub:alice?secret=JBSWY3DPEHPK3PXP&issuer=GitHub"
+
+
+def test_qr_secret_goes_on_the_clipboard_marked_sensitive_and_nowhere_else(monkeypatch, capsys):
+    copies, notes = qr_scan(monkeypatch, OTP)
+    assert cli.capture_qr([]) == 0
+    assert copies == [(["wl-copy", "--sensitive"], OTP.encode())]
+    assert notes == [("2FA setup code copied", "")]
+    out = capsys.readouterr().out
+    assert out == "2FA setup code copied\n"
+    assert "JBSWY3DPEHPK3PXP" not in out
+
+
+def test_qr_json_is_for_the_shell_and_print_is_for_scripts(monkeypatch, capsys):
+    qr_scan(monkeypatch, OTP)
+    assert cli.capture_qr(["--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"kind": "otp", "caption": "2FA setup code copied", "description": "a 2FA setup code for GitHub"}
+    assert cli.capture_qr(["--print"]) == 0
+    assert capsys.readouterr().out == f"{OTP}\n"
+
+    qr_scan(monkeypatch, "https://example.com/menu")
+    assert cli.capture_qr(["--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["text"] == "https://example.com/menu"
+
+
+def test_qr_link_is_shown_in_full(monkeypatch, capsys):
+    _, notes = qr_scan(monkeypatch, "https://example.com/menu?table=4")
+    assert cli.capture_qr([]) == 0
+    assert notes == [("Link copied: https://example.com/menu?table=4", "")]
+    assert capsys.readouterr().out == "Link copied: https://example.com/menu?table=4\n"
+
+
+def test_qr_long_link_is_cut_in_the_caption_and_kept_whole_for_hermes(monkeypatch, capsys):
+    long = "https://example.com/" + "x" * 1980
+    caption = f"Link copied: {long[:cli.QR_SHOWN_LINK_MAX - 1]}…"
+    assert len(long) == 2000 and len(caption) <= 13 + cli.QR_SHOWN_LINK_MAX
+    copies, notes = qr_scan(monkeypatch, long)
+    assert cli.capture_qr(["--json"]) == 0
+    assert notes == [(caption, "")]
+    assert json.loads(capsys.readouterr().out) == {"kind": "link", "caption": caption, "description": "a link to example.com", "text": long}
+    assert copies == [(["wl-copy", "--sensitive"], long.encode())]
+
+    reading = cli.describe_qr(f"{long}?token=abc")
+    assert reading["caption"] == caption
+    assert reading["link"] == long
+
+
+def test_qr_link_with_a_secret_is_shown_without_it_and_never_copied_plainly(monkeypatch, capsys):
+    link = "https://us02web.zoom.us/j/85512345678?pwd=dGhpc2lzZmFrZTEyMw.1"
+    copies, notes = qr_scan(monkeypatch, link)
+    assert cli.capture_qr(["--json"]) == 0
+    assert copies == [(["wl-copy", "--sensitive"], link.encode())]
+    assert notes == [("Link copied: https://us02web.zoom.us/j/85512345678", "")]
+    out = capsys.readouterr().out
+    assert json.loads(out) == {"kind": "link", "caption": "Link copied: https://us02web.zoom.us/j/85512345678", "description": "a link to us02web.zoom.us, with the parts that looked secret removed", "link": "https://us02web.zoom.us/j/85512345678"}
+    assert "dGhpc2lzZmFrZTEyMw" not in out
+
+    copies, notes = qr_scan(monkeypatch, link, sensitive_ok=False)
+    with pytest.raises(SystemExit) as stopped:
+        cli.capture_qr([])
+    assert stopped.value.code == 1
+    assert copies == [(["wl-copy", "--sensitive"], link.encode())]
+
+
+@pytest.mark.parametrize("code", ["https://example.com/menu", "Table 4"])
+def test_qr_older_wl_clipboard_still_copies_links_and_text(monkeypatch, capsys, code):
+    copies, notes = qr_scan(monkeypatch, code, sensitive_ok=False)
+    assert cli.capture_qr([]) == 0
+    assert copies == [(["wl-copy", "--sensitive"], code.encode()), (["wl-copy"], code.encode())]
+    assert notes == [(cli.describe_qr(code)["caption"], "")]
+
+
+@pytest.mark.parametrize("code", [OTP, "WIFI:S:Home;T:WPA;P:hunter22;;", "https://example.com/reset?token=0000aaaa1111bbbb", "ab12cd34ef56", "https://example.com\nWIFI:S:Home;P:hunter22;;"])
+def test_qr_secret_is_not_copied_plainly_when_it_cannot_be_marked(monkeypatch, capsys, code):
+    copies, notes = qr_scan(monkeypatch, code, sensitive_ok=False)
+    with pytest.raises(SystemExit) as stopped:
+        cli.capture_qr(["--json"])
+    assert stopped.value.code == 1
+    assert copies == [(["wl-copy", "--sensitive"], code.encode())]
+    assert notes == [("Code not copied", "It looks secret, and this clipboard cannot keep it out of clipboard history")]
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "not copied" in captured.err and "wl-clipboard 2.2" in captured.err
+    assert code not in captured.err and "hunter22" not in captured.err
+
+
+def test_qr_plain_fallback_that_fails_is_reported(monkeypatch, capsys):
+    _, notes = qr_scan(monkeypatch, "Table 4", sensitive_ok=False)
+    real_run = cli.subprocess.run
+    monkeypatch.setattr(cli.subprocess, "run", lambda argv, **kwargs: subprocess.CompletedProcess(argv, 1) if argv == ["wl-copy"] else real_run(argv, **kwargs))
+    with pytest.raises(SystemExit) as stopped:
+        cli.capture_qr([])
+    assert stopped.value.code == 1
+    assert notes == [("Code not copied", "The clipboard did not take it")]
+    captured = capsys.readouterr()
+    assert captured.out == "" and "wl-copy failed" in captured.err
+
+
+def test_qr_codes_come_from_zbar_xml_one_by_one():
+    assert cli.zbar_codes(zbar_xml("https://example.com\nWIFI:S:Home;P:hunter22;;")) == ["https://example.com\nWIFI:S:Home;P:hunter22;;"]
+    assert cli.zbar_codes(zbar_xml("one", "two", "one")) == ["one", "two"]
+    # zbarimg sends codes that are not text as base64 (this one read from a real code).
+    assert cli.zbar_codes(zbar_xml("<data format='base64' length='13'><![CDATA[\nQ2Fm/6kgXV0+IDx4Pg==\n]]></data>")) == ["Caf\ufffd\ufffd ]]> <x>"]
+    assert cli.zbar_codes(zbar_xml()) == []
+    assert cli.zbar_codes(b"not xml") == []
+    assert cli.zbar_codes(zbar_xml("<data format='base64'><![CDATA[%%%]]></data>")) == []
+
+
+def test_qr_nested_data_is_not_read_as_a_code():
+    assert cli.zbar_codes(zbar_xml("<data>outer<data>otpauth://totp/X?secret=JBSWY3DPEHPK3PXP</data></data>")) == []
+    assert cli.zbar_codes(zbar_xml("<data><![CDATA[one]]></data><data><![CDATA[two]]></data>")) == []
+    deeper = (
+        b"<barcodes xmlns='http://zbar.sourceforge.net/2008/barcode'><source href='-'><index num='0'>"
+        b"<symbol type='QR-Code'><data><![CDATA[real]]></data></symbol>"
+        b"<symbol type='QR-Code'><extra><data><![CDATA[hidden]]></data></extra></symbol>"
+        b"</index></source></barcodes>"
+    )
+    assert cli.zbar_codes(deeper) == ["real"]
+    stray = b"<barcodes xmlns='http://zbar.sourceforge.net/2008/barcode'><data>loose</data><source href='-'><data>also loose</data></source></barcodes>"
+    assert cli.zbar_codes(stray) == []
+    assert cli.zbar_codes(b"<other><source><index><symbol><data>x</data></symbol></index></source></other>") == []
+
+
+def test_qr_internal_xml_entities_are_not_expanded():
+    doctype = b"<!DOCTYPE barcodes [<!ENTITY otp 'otpauth://totp/X?secret=JBSWY3DPEHPK3PXP'>]>\n"
+    assert cli.zbar_codes(doctype + zbar_xml("<data>&otp;</data>")) == []
+    assert cli.zbar_codes(b"<?xml version='1.0'?>" + doctype + zbar_xml("plain")) == []
+    # An entity with no declaration is a parse error, and a declaration inside a code is just text.
+    assert cli.zbar_codes(zbar_xml("<data>&otp;</data>")) == []
+    assert cli.zbar_codes(zbar_xml("<!DOCTYPE x [<!ENTITY a 'b'>]>&a;")) == ["<!DOCTYPE x [<!ENTITY a 'b'>]>&a;"]
+    assert cli.zbar_codes(b"<?xml version='1.0'?>\n" + zbar_xml("plain")) == ["plain"]
+    assert cli.zbar_codes(zbar_xml("<data>fish &amp; chips</data>")) == ["fish & chips"]
+
+
+def test_qr_several_codes_are_refused_and_nothing_is_copied(monkeypatch, capsys):
+    copies, notes = qr_scan(monkeypatch, "https://example.com", "WIFI:S:Home;T:WPA;P:hunter22;;")
+    with pytest.raises(SystemExit) as stopped:
+        cli.capture_qr(["--json"])
+    assert stopped.value.code == 1
+    assert copies == []
+    assert notes == [("Several codes found", "Nothing was copied; select just one code")]
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "hunter22" not in captured.err and "several codes" in captured.err
+
+
+def test_qr_one_code_with_several_lines_is_hidden_when_any_line_is(monkeypatch, capsys):
+    copies, notes = qr_scan(monkeypatch, "https://example.com\nWIFI:S:Home;T:WPA;P:hunter22;;")
+    assert cli.capture_qr(["--json"]) == 0
+    assert copies == [(["wl-copy", "--sensitive"], b"https://example.com\nWIFI:S:Home;T:WPA;P:hunter22;;")]
+    out = capsys.readouterr().out
+    assert "hunter22" not in out and "example.com" not in out
+    assert json.loads(out)["kind"] == "wifi"
+
+
+def test_qr_no_code_copies_nothing(monkeypatch):
+    copies, notes = qr_scan(monkeypatch)
+    assert cli.capture_qr([]) == 1
+    assert copies == []
+    assert notes == [("No code found", "The selection had no QR code or barcode")]
+
+
+@pytest.mark.parametrize("args", [["--json", "--print"], ["--print", "--json"], ["--jsn"], ["extra"], ["--json", "extra"], ["--print", "--print"]])
+def test_qr_refuses_unknown_flags_extra_arguments_and_both_outputs(monkeypatch, capsys, args):
+    copies, notes = qr_scan(monkeypatch, OTP)
+    monkeypatch.setattr(cli, "sh", lambda argv, **kwargs: pytest.fail("selected a region before checking the arguments"))
+    with pytest.raises(SystemExit) as stopped:
+        cli.capture_qr(args)
+    assert stopped.value.code == 2
+    assert copies == [] and notes == []
+    err = capsys.readouterr().err
+    assert "capture qr [--json | --print]" in err
+    assert ("one option at most" in err) == (set(args) == {"--json", "--print"})
+
+
+def test_capture_passes_the_qr_options_on(monkeypatch):
+    seen = []
+    monkeypatch.setattr(cli, "capture_qr", lambda args: seen.append(args) or 0)
+    assert cli.capture(["qr", "--print"]) == 0
+    assert seen == [["--print"]]
+
+
 class FakeRun:
     """Stands in for subprocess.run: records each argv and answers from `outcomes` (argv prefix -> exit code, (code, stdout) or exception)."""
 

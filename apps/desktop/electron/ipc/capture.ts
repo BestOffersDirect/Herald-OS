@@ -5,12 +5,43 @@ import path from 'node:path'
 import { app, clipboard, ClipboardItem, dialog, ipcMain, nativeImage, shell, systemPreferences } from 'electron'
 import { translate } from '../../shared/i18n.ts'
 import { type CaptureTool, type CaptureToolResult, IPC, type RecordingState, type ScreenshotMode } from '../../shared/ipc.ts'
+import { describeQr } from '../../shared/qr.ts'
 import { privacyPaneUrl } from '../../shared/privacy-panes.ts'
 import { allowAttachments } from '../attachments.ts'
 import { menuLanguage } from '../i18n.ts'
 import { log } from '../log.ts'
 import { run } from '../platform/exec.ts'
-import { pickColourMac, readImageMac } from '../platform/mac-tools.ts'
+import { copyConcealedMac, pickColourMac, readImageMac } from '../platform/mac-tools.ts'
+
+export const QR_NOT_COPIED = 'The code was not copied: it looks secret, and the clipboard could not mark it as concealed, so clipboard managers would keep it.'
+
+/**
+ * One QR code goes on the clipboard, marked as concealed so clipboard managers skip it (QR codes
+ * often carry secrets, such as a 2FA setup code). Several are refused rather than run together.
+ * If the concealed copy fails, only ordinary links and text are copied plainly; a secret is not
+ * copied at all. The renderer only gets a description, so the contents never leave main.
+ */
+async function copyQrCode(codes: string[]): Promise<CaptureToolResult> {
+  if (codes.length !== 1) {
+    return { codes: codes.length }
+  }
+
+  const reading = describeQr(codes[0])
+
+  try {
+    await copyConcealedMac(codes[0])
+  } catch (error) {
+    log('capture', `concealed copy (${reading.kind}): ${error instanceof Error ? error.message : String(error)}`)
+
+    if (reading.text === undefined) {
+      throw new Error(QR_NOT_COPIED)
+    }
+
+    clipboard.writeText(codes[0])
+  }
+
+  return { codes: 1, qr: reading }
+}
 
 /** Screen grabs handed to Hermes; they only need to outlive the question about them. */
 export function capturesDir(): string {
@@ -401,7 +432,11 @@ export function registerCaptureIpc(onRecording: (state: RecordingState) => void)
     }
 
     try {
-      const lines = await readImageMac(file, tool === 'qr' ? 'codes' : 'text')
+      if (tool === 'qr') {
+        return await copyQrCode([...new Set(await readImageMac(file, 'codes'))])
+      }
+
+      const lines = await readImageMac(file, 'text')
       const text = lines.join('\n')
 
       if (text) {
