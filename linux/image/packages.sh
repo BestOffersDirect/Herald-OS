@@ -97,6 +97,9 @@ if [[ "$MODE" == "--image" ]]; then
   install -Dm0644 "$LINUX/image/herald-os-firstboot.service" /usr/lib/systemd/system/herald-os-firstboot.service
   install -Dm0644 "$LINUX/image/herald-os-firstboot-apps.service" /usr/lib/systemd/system/herald-os-firstboot-apps.service
   install -Dm0644 "$LINUX/image/herald-os-hermes.service" /usr/lib/systemd/system/herald-os-hermes.service
+  install -Dm0644 "$LINUX/image/herald-os-login.service" /usr/lib/systemd/system/herald-os-login.service
+  # The image only: greetd waits for herald-os-login.service (the development VM has no such unit).
+  install -Dm0644 "$LINUX/image/greetd-herald-os-login.conf" /usr/lib/systemd/system/greetd.service.d/herald-os-login.conf
   install -Dm0755 "$LINUX/image/firstboot.sh" /usr/libexec/herald-os/firstboot.sh
   install -Dm0755 "$LINUX/image/reset-helper" /usr/libexec/herald-os/reset-helper
   install -Dm0644 "$LINUX/image/herald-os-reset.service" /usr/lib/systemd/system/herald-os-reset.service
@@ -152,6 +155,9 @@ else
   flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
 fi
 systemctl enable NetworkManager bluetooth greetd || true
+# A text console on Ctrl+Alt+F2 whatever greetd does: on a switched system greetd waits for
+# herald-os-login.service, and when that fails this is where to read why (docs/LINUX.md).
+systemctl enable getty@tty2.service || true
 systemctl enable plocate-updatedb.timer || true
 systemctl set-default graphical.target
 # The firewall: nothing comes in except LocalSend and mDNS (and SSH on the development VM).
@@ -167,7 +173,7 @@ if [[ "$MODE" == "--dev" ]]; then
 fi
 
 if [[ "$MODE" == "--image" ]]; then
-  systemctl enable herald-os-firstboot.service herald-os-firstboot-apps.service herald-os-hermes.service herald-os-reset.service
+  systemctl enable herald-os-firstboot.service herald-os-firstboot-apps.service herald-os-hermes.service herald-os-reset.service herald-os-login.service
   # Release images ship without SSH; the dev VM keeps it for linux/dev/.
   systemctl disable sshd.service 2>/dev/null || true
 else
