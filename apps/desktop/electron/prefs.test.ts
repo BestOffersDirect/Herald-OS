@@ -3,8 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { NOTIFY_DEFAULTS } from '../shared/notify-prefs.ts'
-import { PET_PREFS_DEFAULTS, type PetPrefs } from '../shared/pet.ts'
-import { ROOM_PREFS_DEFAULTS, type RoomPrefs } from '../shared/room.ts'
+import { PET_PREFS_DEFAULTS } from '../shared/pet.ts'
+import { ROOM_PREFS_DEFAULTS } from '../shared/room.ts'
 import { heraldOsDataDir } from './paths.ts'
 import { adoptLegacyNotify, readPrefs, writePrefs } from './prefs.ts'
 
@@ -119,8 +119,18 @@ describe('the pet in the prefs', () => {
     writePrefs({ theme: 'graphite' })
     expect(onDisk()).toMatchObject({ theme: 'graphite', pet: quiet })
 
-    expect(writePrefs({ pet: { hidden: false } as PetPrefs }).pet).toEqual({ ...quiet, hidden: false })
+    expect(writePrefs({ pet: { hidden: false } }).pet).toEqual({ ...quiet, hidden: false })
     expect(readPrefs().pet).toEqual({ ...quiet, hidden: false })
+  })
+
+  it('keeps the fields a write does not name on disk, so a put-away pet stays away when another window moves it', () => {
+    writePrefs({ pet: { ...PET_PREFS_DEFAULTS, hidden: true, followWindows: false } })
+
+    expect(writePrefs({ pet: { spot: { x: 0.4, y: 0.6 } } }).pet).toEqual({ ...PET_PREFS_DEFAULTS, hidden: true, followWindows: false, spot: { x: 0.4, y: 0.6 } })
+    expect(onDisk().pet).toEqual({ ...PET_PREFS_DEFAULTS, hidden: true, followWindows: false, spot: { x: 0.4, y: 0.6 } })
+
+    writePrefs({ pet: { notes: { update: false, job: true } } })
+    expect(readPrefs().pet).toEqual({ ...PET_PREFS_DEFAULTS, hidden: true, followWindows: false, spot: { x: 0.4, y: 0.6 }, notes: { update: false, job: true } })
   })
 })
 
@@ -142,8 +152,8 @@ describe('the Pet Room in the prefs', () => {
     const calm = { ...ROOM_PREFS_DEFAULTS, pets: { ...ROOM_PREFS_DEFAULTS.pets, conversation: 'boba' }, motion: 'calm' as const }
 
     expect(writePrefs({ room: calm }).room).toEqual(calm)
-    expect(writePrefs({ room: { pets: { helper: 'mochi' } } as RoomPrefs }).room).toEqual({ ...calm, pets: { ...calm.pets, helper: 'mochi' } })
-    expect(writePrefs({ room: { steps: false } as RoomPrefs }).room).toEqual({ ...calm, pets: { ...calm.pets, helper: 'mochi' }, steps: false })
+    expect(writePrefs({ room: { pets: { helper: 'mochi' } } }).room).toEqual({ ...calm, pets: { ...calm.pets, helper: 'mochi' } })
+    expect(writePrefs({ room: { steps: false } }).room).toEqual({ ...calm, pets: { ...calm.pets, helper: 'mochi' }, steps: false })
 
     writePrefs({ theme: 'graphite' })
     expect(onDisk()).toMatchObject({ theme: 'graphite', room: { pets: { conversation: 'boba', helper: 'mochi' }, motion: 'calm', steps: false } })
