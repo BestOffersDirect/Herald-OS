@@ -104,7 +104,11 @@ function glowingAreas(agents: readonly RoomAgent[]): string {
   return [...areas].sort().join(',')
 }
 
-function place(root: HTMLElement, x: number, y: number, opacity: number, depth: number): void {
+/** How near a side a pet may stand before its bubble opens toward the middle of the room instead of over it. */
+const EDGE_PX = 130
+
+function place(root: HTMLElement, x: number, y: number, opacity: number, depth: number, width: number): void {
+  root.dataset.edge = x < EDGE_PX ? 'left' : x > width - EDGE_PX ? 'right' : 'middle'
   root.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`
   root.style.opacity = opacity >= 1 ? '' : opacity.toFixed(3)
   root.style.zIndex = String(depth)
@@ -167,7 +171,7 @@ export function RoomScene({ agents, handoffs, assignment, installed, steps, moti
 
         if (root) {
           placed.add(frame.id)
-          place(root, frame.x, frame.y, frame.opacity, raisedRef.current === frame.id ? frames.length + 1 : index + 1)
+          place(root, frame.x, frame.y, frame.opacity, raisedRef.current === frame.id ? frames.length + 1 : index + 1, at.width)
         }
       })
 
@@ -263,7 +267,7 @@ export function RoomScene({ agents, handoffs, assignment, installed, steps, moti
         const spot = spots.current.get(id)
 
         if (spot) {
-          place(element, spot.x, spot.y, 1, 1)
+          place(element, spot.x, spot.y, 1, 1, layoutRef.current?.width ?? Number.POSITIVE_INFINITY)
         } else {
           element.style.visibility = 'hidden'
         }

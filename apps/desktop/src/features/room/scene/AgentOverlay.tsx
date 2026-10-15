@@ -34,7 +34,7 @@ const COMPACT_PET = 60
 type Lean = 'left' | 'right' | null
 
 const TAILS: Record<'over' | 'left' | 'right', string> = {
-  over: 'top-full left-1/2 -mt-1 -translate-x-1/2 border-r border-b',
+  over: 'top-full left-1/2 -mt-1 -translate-x-1/2 border-r border-b group-data-[edge=left]/pet:left-6 group-data-[edge=right]/pet:right-6 group-data-[edge=right]/pet:left-auto group-data-[edge=right]/pet:translate-x-1/2',
   right: 'top-1/2 -left-1 -translate-y-1/2 border-b border-l',
   left: 'top-1/2 -right-1 -translate-y-1/2 border-t border-r'
 }
@@ -45,7 +45,7 @@ function Bubble({ text, pet, wide, lean, compact, still }: { text: string; pet: 
   const place: CSSProperties = lean === 'right' ? { left: beside, bottom: head } : lean === 'left' ? { right: beside, bottom: head } : { bottom: Math.round(pet.height * BUBBLE_RISE) }
 
   return (
-    <div className={cn('absolute', !lean && 'left-0 -translate-x-1/2')} style={place}>
+    <div className={cn('absolute', !lean && 'left-0 -translate-x-1/2 group-data-[edge=left]/pet:-left-6 group-data-[edge=left]/pet:translate-x-0 group-data-[edge=right]/pet:-right-6 group-data-[edge=right]/pet:left-auto group-data-[edge=right]/pet:translate-x-0')} style={place}>
       <div
         key={text}
         className={cn('float rounded-xl leading-snug text-fg', compact ? 'px-2 py-0.5 text-[10.5px]' : 'px-2.5 py-1 text-[11.5px]', wide ? 'w-max max-w-[240px]' : 'max-w-[200px] truncate whitespace-nowrap', !still && 'animate-pop')}
@@ -88,7 +88,7 @@ export const AgentOverlay = memo(function AgentOverlay({ agent, pet, facts, step
   const tooltip = [title, `${KIND_NAMES[agent.kind]} · ${doingText(agent)}`, ...facts.map(fact => fact.text)].join('\n')
 
   return (
-    <div ref={rootRef} className="pointer-events-none absolute top-0 left-0">
+    <div ref={rootRef} className="group/pet pointer-events-none absolute top-0 left-0">
       <button
         type="button"
         aria-label={`Open ${title} in Hermes`}

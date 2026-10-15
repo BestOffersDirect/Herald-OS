@@ -61,7 +61,7 @@ export interface PetBox {
 export const TAG_SPAN = 1.75
 
 /** The widest a name tag or fact under a pet may be. */
-export const tagWidth = (pet: PetBox): number => Math.round(pet.width * TAG_SPAN) - 8
+export const tagWidth = (pet: PetBox): number => Math.max(84, Math.round(pet.width * TAG_SPAN) - 8)
 
 /** A bubble's bottom sits this many pet heights over the pet's feet; it is about this many pixels tall. */
 export const BUBBLE_RISE = 0.84
