@@ -40,6 +40,8 @@ describe('the Room in words', () => {
       waiting: 1,
       idle: 1,
       helpers: 1,
+      automations: 0,
+      elsewhere: 0,
       lines: ['Inbox triage (conversation): waiting for your OK', 'Budget review (mission): reading Budget.xlsx', 'Trip plan (conversation): thinking', 'Find hotels (helper of Trip plan): browsing the web', 'Conversation: idle']
     })
   })
@@ -56,6 +58,6 @@ describe('the Room in words', () => {
   })
 
   it('is empty when nothing is there', () => {
-    expect(summarizeRoom(EMPTY_ROOM, T0)).toEqual({ total: 0, working: 0, waiting: 0, idle: 0, helpers: 0, lines: [] })
+    expect(summarizeRoom(EMPTY_ROOM, T0)).toEqual({ total: 0, working: 0, waiting: 0, idle: 0, helpers: 0, automations: 0, elsewhere: 0, lines: [] })
   })
 })

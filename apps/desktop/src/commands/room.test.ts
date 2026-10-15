@@ -26,10 +26,10 @@ vi.mock('../features/room/store.ts', () => ({ refreshRoomOnce: room.refresh }))
 vi.mock('../features/room/model/summary.ts', () => ({ summarizeRoom: room.summarize }))
 
 const UI: CommandContext = { source: 'ui' }
-const STATE: RoomState = { epoch: 'e1', agents: {}, seen: {}, handoffs: [], toolProgress: 'all', caps: { activeList: true, eventsSince: true, delegation: true, config: true }, updatedAt: 1 }
+const STATE: RoomState = { epoch: 'e1', agents: {}, seen: {}, handoffs: [], toolProgress: 'all', caps: { activeList: true, eventsSince: true, delegation: true, config: true, automations: true, sessionsDb: true }, updatedAt: 1 }
 const LINES = ['Budget review: reading Budget.xlsx', 'Trip plan: waiting for your OK', 'Find flights: running a command', 'Notes: idle']
 
-const summary = (counts: Partial<RoomSummary>): RoomSummary => ({ total: 0, working: 0, waiting: 0, idle: 0, helpers: 0, lines: [], ...counts })
+const summary = (counts: Partial<RoomSummary>): RoomSummary => ({ total: 0, working: 0, waiting: 0, idle: 0, helpers: 0, automations: 0, elsewhere: 0, lines: [], ...counts })
 
 function command(id: string) {
   const found = roomCommands.find(entry => entry.id === id)

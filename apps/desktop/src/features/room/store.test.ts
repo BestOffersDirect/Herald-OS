@@ -1,4 +1,5 @@
 import type { ServerRequest, SessionActiveItem } from '@herald-os/client'
+import type { RoomPrefs } from '../../../shared/room.ts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /*
@@ -23,6 +24,13 @@ const hermes = vi.hoisted(() => {
     /** Answers to this method wait until `release()`. */
     hold: null as null | { method: string; waiting: Array<() => void> },
     atoms: {} as Record<string, { get: () => unknown; set: (value: unknown) => void }>,
+    /** Herald's automations and each job's runs, the session database's rows and what Office and Canvas windows report. */
+    jobs: [] as Record<string, unknown>[],
+    runs: {} as Record<string, Record<string, unknown>[]>,
+    stored: [] as Record<string, unknown>[],
+    rest: [] as Array<{ path: string; query?: Record<string, unknown> }>,
+    office: [] as unknown[],
+    canvas: [] as unknown[],
     reply(method: string, params: Record<string, unknown>): unknown {
       switch (method) {
         case 'session.active_list':
@@ -63,7 +71,8 @@ const page = vi.hoisted(() => {
     addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
     removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener)
   }
-  Object.assign(globalThis, { document: doc, window: { innerWidth: 1440, innerHeight: 900 } })
+  const heraldOS = { office: { presence: async () => hermes.office }, canvas: { presence: async () => hermes.canvas } }
+  Object.assign(globalThis, { document: doc, window: { innerWidth: 1440, innerHeight: 900, heraldOS } })
 
   return {
     hide(hidden: boolean) {
@@ -145,8 +154,45 @@ vi.mock('../../store/shell.ts', () => ({
   get isPanels() {
     return ui.panels
   },
-  openSurface: vi.fn()
+  isMainSurface: true,
+  openSurface: vi.fn(),
+  relayToMain: vi.fn(),
+  onShellCommand: vi.fn(() => () => undefined)
 }))
+
+vi.mock('../automations/api.ts', () => ({
+  cronApi: {
+    list: vi.fn(async () => {
+      hermes.rest.push({ path: '/api/cron/jobs' })
+
+      return hermes.jobs.map(job => ({ ...job }))
+    }),
+    runs: vi.fn(async (job: { id: string }) => {
+      hermes.rest.push({ path: `/api/cron/jobs/${job.id}/runs` })
+
+      return (hermes.runs[job.id] ?? []).map(entry => ({ ...entry }))
+    })
+  }
+}))
+
+vi.mock('../../store/automations.ts', () => ({ eventRuleFor: () => undefined }))
+
+vi.mock('../../lib/rest.ts', () => ({
+  rest: {
+    get: vi.fn(async (path: string, query?: Record<string, unknown>) => {
+      hermes.rest.push({ path, query })
+
+      return { sessions: hermes.stored }
+    })
+  }
+}))
+
+vi.mock('./prefs.ts', async () => {
+  const { atom } = await import('nanostores')
+  const { ROOM_PREFS_DEFAULTS } = await import('../../../shared/room.ts')
+
+  return { $roomPrefs: atom({ ...ROOM_PREFS_DEFAULTS }) }
+})
 
 vi.mock('../../store/windows.ts', () => ({ showPage: vi.fn() }))
 vi.mock('../pet/brain.ts', () => ({ answerApproval: vi.fn((id: unknown, choice: unknown) => ui.answerApproval(id, choice)) }))
@@ -196,6 +242,8 @@ async function load() {
   const shell = await import('../../store/shell.ts')
   const windows = await import('../../store/windows.ts')
   const brain = await import('../pet/brain.ts')
+  const prefs = await import('./prefs.ts')
+  const commands = await import('../../store/os-commands.ts')
 
   requests.$pendingRequests.set([])
   chat.$chats.set({})
@@ -210,13 +258,13 @@ async function load() {
     return off
   }
 
-  return { store, retain, requests, chat, shell, windows, brain }
+  return { store, retain, requests, chat, shell, windows, brain, prefs, commands }
 }
 
 beforeEach(() => {
   vi.useFakeTimers({ now: T0 })
   vi.clearAllMocks()
-  Object.assign(hermes, { open: true, calls: [], live: [], guards: [], sessions: [], buffers: {}, requests: {}, helpers: [], toolProgress: 'all', epoch: 'e1', missing: new Set(), hold: null })
+  Object.assign(hermes, { open: true, calls: [], live: [], guards: [], sessions: [], buffers: {}, requests: {}, helpers: [], toolProgress: 'all', epoch: 'e1', missing: new Set(), hold: null, jobs: [], runs: {}, stored: [], rest: [], office: [], canvas: [] })
   ui.panels = false
   ui.answerApproval = () => true
 })
@@ -659,5 +707,96 @@ describe('opening an agent in Hermes', () => {
 
     expect(shell.openSurface).toHaveBeenCalledWith('main', { type: 'open-session', args: ['stored-T'] })
     expect(windows.showPage).not.toHaveBeenCalled()
+  })
+})
+
+describe('phase 2 feeds', () => {
+  // The mock holds a plain atom where the app derives one from prefs.json.
+  const roomPrefs = (prefs: { $roomPrefs: unknown }) => prefs.$roomPrefs as { set: (value: RoomPrefs) => void }
+  const restCalls = (path: string) => hermes.rest.filter(call => call.path === path)
+
+  it('reads Herald’s automations and the latest run of each job that moved, and again soon after cron.changed', async () => {
+    hermes.jobs = [{ id: 'j1', name: 'Morning digest', prompt: 'never kept', state: 'scheduled', enabled: true, last_run_at: null, last_status: null, next_run_at: 1_750_000_100 }]
+    hermes.runs = { j1: [{ id: 'cron_j1_20260101_000000', started_at: T0 / 1000, ended_at: null, is_active: true, title: 'never kept' }] }
+    const { store, retain } = await load()
+
+    retain()
+    await flush()
+
+    expect(restCalls('/api/cron/jobs')).toHaveLength(1)
+    expect(restCalls('/api/cron/jobs/j1/runs')).toHaveLength(1)
+    expect(store.$room.get().agents['a::j1']).toMatchObject({ kind: 'automation', title: 'Morning digest', phase: 'tool', area: 'automations', step: 'running' })
+    expect(JSON.stringify(store.$room.get())).not.toContain('never kept')
+
+    hermes.jobs = [{ ...hermes.jobs[0], last_run_at: (T0 + 30_000) / 1000, last_status: 'ok', next_run_at: 1_750_086_400 }]
+    hermes.runs = { j1: [{ id: 'cron_j1_20260101_000000', started_at: T0 / 1000, ended_at: (T0 + 30_000) / 1000, is_active: false }] }
+    await vi.advanceTimersByTimeAsync(30_000)
+
+    for (const handler of hermes.live) {
+      handler({ type: 'cron.changed', payload: {} })
+    }
+
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(store.$room.get().agents['a::j1']).toMatchObject({ phase: 'idle', area: 'automations', step: null })
+    expect(store.$room.get().agents['a::j1'].automation).toMatchObject({ running: false, lastOutcome: 'ok' })
+  })
+
+  it('never reads the session database until the lane is on, reads it at most once a minute, and empties the lane when it is turned off', async () => {
+    hermes.stored = [
+      { id: 'tg1', source: 'telegram', title: 'Support bot', preview: 'never kept', is_active: true, last_active: T0 / 1000, started_at: T0 / 1000 - 60 },
+      { id: 'own', source: 'herald_os', title: 'Herald chat', is_active: true, last_active: T0 / 1000 }
+    ]
+    const { store, retain, prefs } = await load()
+
+    retain()
+    await vi.advanceTimersByTimeAsync(120_000)
+
+    expect(restCalls('/api/sessions')).toHaveLength(0)
+
+    roomPrefs(prefs).set({ ...prefs.$roomPrefs.get(), elsewhere: true })
+    await flush()
+
+    expect(restCalls('/api/sessions')).toEqual([{ path: '/api/sessions', query: { limit: 40, order: 'recent', exclude_sources: 'herald_os,hermes_os,tool' } }])
+    expect(store.$room.get().agents['e:tg1']).toMatchObject({ kind: 'elsewhere', area: 'elsewhere', title: 'Support bot' })
+    expect(store.$room.get().agents['e:own']).toBeUndefined()
+    expect(JSON.stringify(store.$room.get())).not.toContain('never kept')
+
+    await vi.advanceTimersByTimeAsync(59_000)
+    expect(restCalls('/api/sessions')).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1_500)
+    expect(restCalls('/api/sessions')).toHaveLength(2)
+
+    roomPrefs(prefs).set({ ...prefs.$roomPrefs.get(), elsewhere: false })
+    await flush()
+
+    expect(store.$room.get().agents['e:tg1']).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(restCalls('/api/sessions')).toHaveLength(2)
+  })
+
+  it('puts open documents on desks, and an agent’s command with its session moves that agent to the document it named', async () => {
+    hermes.office = [{ app: 'docs', at: T0, active: 'k1', documents: [{ key: 'k1', name: 'Launch plan.docx', selection: 'never kept' }, { key: 'k2', name: 'Notes.docx' }] }]
+    hermes.sessions = [row('live-1', 'working', 'Launch'), row('live-2', 'working', 'Notes')]
+    buffer('live-1', ['message.start'], ['tool.start', { tool_id: 't1', name: 'docs', args: { action: 'write' } }])
+    buffer('live-2', ['message.start'], ['tool.start', { tool_id: 't2', name: 'docs', args: { action: 'write' } }])
+    const { store, retain, commands } = await load()
+
+    retain()
+    await flush()
+    await vi.advanceTimersByTimeAsync(10)
+
+    expect(store.$room.get().desks).toMatchObject({ 'docs:k1': { name: 'Launch plan.docx', front: true }, 'docs:k2': { name: 'Notes.docx' } })
+    expect(store.$room.get().agents['s:live-1'].desk).toBe('docs:k1')
+    expect(store.$room.get().agents['s:live-2'].desk).toBe('docs:k1')
+    expect(JSON.stringify(store.$room.get())).not.toContain('never kept')
+
+    commands.$commandLog.set([{ id: 9, command: 'docs.write', args: { document: '~/Notes.docx', text: 'never kept' }, source: 'agent', result: { ok: true, summary: 'Wrote' }, ts: Date.now(), session: 'live-2' }])
+    await flush()
+
+    expect(store.$room.get().agents['s:live-1'].desk).toBe('docs:k1')
+    expect(store.$room.get().agents['s:live-2'].desk).toBe('docs:k2')
+    expect(store.$room.get().agents['s:live-2'].trace.desk).toMatchObject({ source: 'command', type: 'docs.write' })
+    expect(JSON.stringify(store.$room.get())).not.toContain('never kept')
   })
 })

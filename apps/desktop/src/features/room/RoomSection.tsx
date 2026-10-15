@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { IconBubbleText, IconColorSwatch, IconMessages, IconPaw, IconSofa, IconSubtask, IconTarget, IconWalk } from '@tabler/icons-react'
+import { IconBroadcast, IconBubbleText, IconColorSwatch, IconDeviceDesktop, IconFileText, IconMessages, IconPaw, IconRepeat, IconSofa, IconSubtask, IconTarget, IconWalk } from '@tabler/icons-react'
 import { type ReactNode, useState } from 'react'
 import type { RoomKind, RoomMotion, RoomPrefsPatch } from '../../../shared/room.ts'
 import { Chips, GlassButton, Toggle } from '../../components/ui/glass.tsx'
@@ -17,11 +17,13 @@ import { $roomPrefs, setRoomPrefs } from './prefs.ts'
  * own (prefs.json `room`); the pets are the ones installed for Hermes, borrowed as they are.
  */
 
-/** The kinds of work the Room shows so far; automations come later. */
-const KINDS: { kind: Exclude<RoomKind, 'automation'>; label: string; description: string; icon: ReactNode }[] = [
+/** The kinds of work the Room shows; work outside Herald only while its lane is on. */
+const KINDS: { kind: RoomKind; label: string; description: string; icon: ReactNode }[] = [
   { kind: 'conversation', label: 'Conversations', description: 'Each chat Hermes is working in.', icon: <IconMessages /> },
   { kind: 'mission', label: 'Missions', description: 'Each mission Hermes is working through.', icon: <IconTarget /> },
-  { kind: 'helper', label: 'Helpers', description: 'The helpers Hermes hands part of a task to.', icon: <IconSubtask /> }
+  { kind: 'helper', label: 'Helpers', description: 'The helpers Hermes hands part of a task to.', icon: <IconSubtask /> },
+  { kind: 'automation', label: 'Automations', description: 'Each automation on your Automations page.', icon: <IconRepeat /> },
+  { kind: 'elsewhere', label: 'Hermes outside Herald', description: 'Work in the lane for Hermes outside Herald.', icon: <IconBroadcast /> }
 ]
 
 const MOTIONS: { id: RoomMotion; label: string; description: string }[] = [
@@ -89,7 +91,7 @@ export function RoomSection() {
 
       <SettingsGroup title="A pet for each kind of work">
         {info.installed.length > 0 ? (
-          KINDS.map(petRow)
+          KINDS.filter(row => row.kind !== 'elsewhere' || prefs.elsewhere).map(petRow)
         ) : (
           <SettingsRow icon={<IconPaw />} label="No pet is installed yet" description="The Room borrows the pets installed for Hermes and never installs one: Settings, Pet has the petdex gallery." keywords="pet room petdex install gallery">
             <GlassButton size="sm" onClick={() => focusSettings({ section: 'pet' })}>
@@ -114,6 +116,44 @@ export function RoomSection() {
         </SettingsRow>
         <SettingsRow icon={<IconBubbleText />} label="Show each step" description="A bubble says what each pet is doing, such as reading Budget.xlsx. Off leaves name tags, signs and facts." keywords="pet room bubbles steps labels">
           <Toggle checked={prefs.steps} onChange={next => save({ steps: next })} label="Show each step" />
+        </SettingsRow>
+        <SettingsRow
+          icon={<IconFileText />}
+          label="Document names on desks"
+          description="The documents open in Herald Docs, Sheets and Slides and your Canvas projects stand as desks, and a pet working on one stands at its desk. Off leaves the desks unnamed."
+          keywords="pet room desks documents names office canvas"
+        >
+          <Toggle checked={prefs.deskNames} onChange={next => save({ deskNames: next })} label="Document names on desks" />
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup title="Hermes outside Herald">
+        <SettingsRow
+          icon={<IconBroadcast />}
+          label="Show Hermes work outside Herald"
+          description="A lane at the edge of the room shows Hermes at work elsewhere: messaging bots, the Hermes CLI and TUI, Hermes's own desktop app and automations its messaging gateway runs. Coarse: titles and whether each is active, from Hermes's session list once a minute."
+          keywords="pet room elsewhere outside lane telegram discord cli tui gateway sessions"
+        >
+          <Toggle checked={prefs.elsewhere} onChange={next => save({ elsewhere: next })} label="Show Hermes work outside Herald" />
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup title="Screensaver">
+        <SettingsRow
+          icon={<IconDeviceDesktop />}
+          label="Show the Pet Room as the screensaver"
+          description="Herald's screensaver shows the room with no names, document names or bubbles. Any key, click or move ends it, and nothing in it answers or opens. While Herald Slides presents or the pet is put away for a screen share, the clock shows instead."
+          keywords="pet room screensaver screen saver idle"
+          below={
+            <GlassButton size="sm" variant="ghost" onClick={() => focusSettings({ section: 'general' })}>
+              When the screensaver starts
+            </GlassButton>
+          }
+        >
+          <Toggle checked={prefs.screensaver} onChange={next => save({ screensaver: next })} label="Show the Pet Room as the screensaver" />
+        </SettingsRow>
+        <SettingsRow icon={<IconBubbleText />} label="Steps in the screensaver" description="Bubbles in the screensaver say what each pet is doing, such as reading Budget.xlsx." keywords="pet room screensaver steps bubbles labels">
+          <Toggle checked={prefs.screensaverSteps} disabled={!prefs.screensaver} onChange={next => save({ screensaverSteps: next })} label="Steps in the screensaver" />
         </SettingsRow>
       </SettingsGroup>
     </>

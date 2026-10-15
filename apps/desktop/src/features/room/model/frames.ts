@@ -43,6 +43,11 @@ export interface RoomHelperFacts {
   durationSeconds: number | null
   filesRead: number | null
   filesWritten: number | null
+  inputTokens: number | null
+  outputTokens: number | null
+  reasoningTokens: number | null
+  apiCalls: number | null
+  costUsd: number | null
 }
 
 interface FrameBase {
@@ -230,7 +235,12 @@ function helperFacts(sessionId: string, payload: Record<string, unknown>, stage:
     summary: complete && typeof payload.summary === 'string' ? summaryLine(payload.summary) : null,
     durationSeconds: complete ? count(payload.duration_seconds) : null,
     filesRead: complete && Array.isArray(payload.files_read) ? payload.files_read.length : null,
-    filesWritten: complete && Array.isArray(payload.files_written) ? payload.files_written.length : null
+    filesWritten: complete && Array.isArray(payload.files_written) ? payload.files_written.length : null,
+    inputTokens: complete ? count(payload.input_tokens) : null,
+    outputTokens: complete ? count(payload.output_tokens) : null,
+    reasoningTokens: complete ? count(payload.reasoning_tokens) : null,
+    apiCalls: complete ? count(payload.api_calls) : null,
+    costUsd: complete ? count(payload.cost_usd) : null
   }
 }
 

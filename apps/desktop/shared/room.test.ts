@@ -11,7 +11,7 @@ describe('normalizeRoomPrefs', () => {
   it('keeps the pet chosen for each kind of work on its own', () => {
     const prefs = normalizeRoomPrefs({ pets: { conversation: 'boba', helper: ' mochi ' } })
 
-    expect(prefs.pets).toEqual({ conversation: 'boba', mission: null, helper: 'mochi', automation: null })
+    expect(prefs.pets).toEqual({ conversation: 'boba', mission: null, helper: 'mochi', automation: null, elsewhere: null })
     expect(Object.keys(prefs.pets).sort()).toEqual([...ROOM_KINDS].sort())
   })
 
@@ -44,6 +44,12 @@ describe('normalizeRoomPrefs', () => {
     expect(normalizeRoomPrefs({ tints: false, steps: false })).toMatchObject({ tints: false, steps: false })
     expect(normalizeRoomPrefs({ tints: 'no', steps: 0 })).toMatchObject({ tints: true, steps: true })
   })
+
+  it('keeps the lane for work outside Herald and the screensaver off unless turned on, and desk names on unless turned off', () => {
+    expect(normalizeRoomPrefs({})).toMatchObject({ elsewhere: false, screensaver: false, screensaverSteps: false, deskNames: true })
+    expect(normalizeRoomPrefs({ elsewhere: 'yes', screensaver: 1, screensaverSteps: 'true', deskNames: 0 })).toMatchObject({ elsewhere: false, screensaver: false, screensaverSteps: false, deskNames: true })
+    expect(normalizeRoomPrefs({ elsewhere: true, screensaver: true, screensaverSteps: true, deskNames: false })).toMatchObject({ elsewhere: true, screensaver: true, screensaverSteps: true, deskNames: false })
+  })
 })
 
 describe('mergeRoomPrefs', () => {
@@ -55,7 +61,7 @@ describe('mergeRoomPrefs', () => {
   })
 
   it('changes the pets kind by kind, and null hands a kind back to the Room to pick', () => {
-    expect(mergeRoomPrefs(current, { pets: { mission: 'boba' } }).pets).toEqual({ conversation: 'boba', mission: 'boba', helper: 'mochi', automation: null })
+    expect(mergeRoomPrefs(current, { pets: { mission: 'boba' } }).pets).toEqual({ conversation: 'boba', mission: 'boba', helper: 'mochi', automation: null, elsewhere: null })
     expect(mergeRoomPrefs(current, { pets: { helper: null } }).pets).toEqual({ ...current.pets, helper: null })
   })
 

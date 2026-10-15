@@ -1,10 +1,13 @@
+import { meetingOf } from './desks.ts'
 import type { RoomGuardrailCode } from './frames.ts'
-import type { RoomAgent, RoomFact, RoomPhase, RoomResult, RoomState } from './types.ts'
+import type { RoomAgent, RoomElsewhere, RoomFact, RoomPhase, RoomResult, RoomState } from './types.ts'
 
 /** A turn with nothing new for this long is quiet. */
 export const QUIET_AFTER_MS = 60_000
 /** The same call this many times in a row is worth saying. */
 export const REPEAT_AFTER = 3
+/** Work elsewhere heard from this recently is active now. */
+const ACTIVE_NOW_MS = 2 * 60_000
 
 const TURN_PHASES = new Set<RoomPhase>(['starting', 'thinking', 'tool'])
 
@@ -39,10 +42,71 @@ export function spanOf(ms: number): string {
   return hours === 1 ? '1 hour' : `${hours} hours`
 }
 
+/** A scheduled job's facts: a run under way, else when its last run was and how it ended, and whether it is paused. */
+function automationFacts(agent: RoomAgent, now: number): RoomFact[] {
+  const job = agent.automation
+  const trace = agent.trace.automation ?? null
+
+  if (!job) {
+    return []
+  }
+
+  const facts: RoomFact[] = []
+
+  if (job.running) {
+    const since = job.runStartedAt === null ? 0 : now - job.runStartedAt
+
+    facts.push({ kind: 'running', text: since >= 60_000 ? `running for ${spanOf(since)}` : 'running now', trace })
+  } else if (job.lastRunAt !== null) {
+    const ago = now - job.lastRunAt
+    const outcome = job.lastOutcome === 'failed' ? ', failed' : job.lastOutcome === 'ok' ? ', done' : ''
+
+    facts.push({ kind: 'lastRun', text: `${ago >= 60_000 ? `last run ${spanOf(ago)} ago` : 'last run just now'}${outcome}`, trace })
+  } else {
+    facts.push({ kind: 'lastRun', text: 'not run yet', trace })
+  }
+
+  if (job.paused) {
+    facts.push({ kind: 'paused', text: 'paused', trace })
+  }
+
+  return facts
+}
+
+/** The lane's label for work elsewhere, as of `at` (its last read): where it runs and how active it is ('Telegram · active now'). */
+export function activityText(lane: RoomElsewhere, at: number): string {
+  const since = lane.lastActiveAt === null ? null : Math.max(0, at - lane.lastActiveAt)
+  const how = lane.active ? (since === null || since < ACTIVE_NOW_MS ? 'active now' : `active ${spanOf(since)} ago`) : since === null ? 'not active' : `last active ${spanOf(since)} ago`
+
+  return `${lane.where} · ${how}`
+}
+
+/** "2 agents on Launch plan.docx": agents at one desk, or on one document in an area with desks. */
+function meetingFact(agent: RoomAgent, state: RoomState): RoomFact | null {
+  const met = meetingOf(agent, Object.values(state.agents))
+
+  if (!met.length) {
+    return null
+  }
+
+  const name = (agent.desk ? state.desks?.[agent.desk]?.name : null) ?? agent.target ?? 'one document'
+
+  return { kind: 'meeting', text: `${met.length} agents on ${name}`, trace: agent.trace.desk ?? agent.trace.target ?? null }
+}
+
 /** What is true about an agent now, as facts from its records ('quiet for 4 minutes during a turn', 'same call 3 times'). */
 export function factsOf(agent: RoomAgent, state: RoomState, now: number): RoomFact[] {
+  if (agent.kind === 'automation') {
+    return automationFacts(agent, now)
+  }
+
+  if (agent.kind === 'elsewhere') {
+    return agent.elsewhere ? [{ kind: 'activity', text: activityText(agent.elsewhere, state.elsewhereAt ?? now), trace: agent.trace.elsewhere ?? null }] : []
+  }
+
   const facts: RoomFact[] = []
   const { trace } = agent
+  const meeting = meetingFact(agent, state)
 
   if (agent.approval) {
     facts.push({ kind: 'waiting', text: 'waiting for your OK', trace: trace.approval ?? null })
@@ -64,6 +128,10 @@ export function factsOf(agent: RoomAgent, state: RoomState, now: number): RoomFa
 
   if (TURN_PHASES.has(agent.phase) && now - agent.lastEventAt >= QUIET_AFTER_MS) {
     facts.push({ kind: 'quiet', text: `quiet for ${spanOf(now - agent.lastEventAt)} during a turn`, trace: trace.lastEventAt ?? null })
+  }
+
+  if (meeting) {
+    facts.push(meeting)
   }
 
   if (agent.phase === 'idle') {

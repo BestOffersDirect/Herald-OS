@@ -12,7 +12,7 @@ import { assignPets, type PetAssignment } from '../petdex/assign.ts'
 import { spriteCache } from '../petdex/cache.ts'
 import { factsOf } from './model/facts.ts'
 import { summarizeRoom } from './model/summary.ts'
-import type { RoomFact } from './model/types.ts'
+import type { RoomAgent, RoomFact } from './model/types.ts'
 import { $roomPrefs } from './prefs.ts'
 import { roomNotices, sameFacts } from './scene/labels.ts'
 import { RoomScene } from './scene/RoomScene.tsx'
@@ -53,6 +53,23 @@ function openPetSettings(): void {
 
 const answer = (agentId: string, choice: ApprovalChoice) => void answerRoomApproval(agentId, choice)
 
+/** Each agent's pet and tint, kept steady while others come and go. */
+export function useRoomAssignment(agents: readonly RoomAgent[]): Record<string, PetAssignment> {
+  const prefs = useStore($roomPrefs)
+  const info = useStore($petInfo)
+  const petPrefs = useStore($petPrefs)
+  // In desktop mode the desktop pet draws from the same cache, so it keeps a sheet of its own there.
+  const cap = surface === 'desktop' && petShown(info) && !petPrefs.hidden ? spriteCache.cap - 1 : spriteCache.cap
+  const previous = useRef<Record<string, PetAssignment>>({})
+
+  return useMemo(() => {
+    const next = assignPets(agents, info.installed, prefs, previous.current, cap)
+    previous.current = next
+
+    return next
+  }, [agents, info.installed, prefs, cap])
+}
+
 /** The Room's window content, in a floating window (desktop mode, `active` false while minimized) or its own window (panels mode). */
 export function RoomWindow({ active = true }: { active?: boolean }) {
   const visible = useDocumentVisible()
@@ -65,16 +82,7 @@ export function RoomWindow({ active = true }: { active?: boolean }) {
   const reduced = useReducedMotion()
   const now = useNow(FACTS_MS, live)
   const agents = useMemo(() => Object.values(state.agents), [state.agents])
-  const petPrefs = useStore($petPrefs)
-  // In desktop mode the desktop pet draws from the same cache, so it keeps a sheet of its own there.
-  const cap = surface === 'desktop' && petShown(info) && !petPrefs.hidden ? spriteCache.cap - 1 : spriteCache.cap
-  const previous = useRef<Record<string, PetAssignment>>({})
-  const assignment = useMemo(() => {
-    const next = assignPets(agents, info.installed, prefs, previous.current, cap)
-    previous.current = next
-
-    return next
-  }, [agents, info.installed, prefs, cap])
+  const assignment = useRoomAssignment(agents)
   const shownFacts = useRef<Record<string, RoomFact[]>>({})
   const facts = useMemo(() => {
     const before = shownFacts.current
@@ -95,6 +103,7 @@ export function RoomWindow({ active = true }: { active?: boolean }) {
     () => roomNotices({ connected: connection === 'open', state: { toolProgress: state.toolProgress, caps: state.caps }, pets: info.installed.length }),
     [connection, state.toolProgress, state.caps, info.installed.length]
   )
+  const desks = useMemo(() => Object.values(state.desks ?? {}), [state.desks])
 
   return (
     <RoomScene
@@ -107,6 +116,9 @@ export function RoomWindow({ active = true }: { active?: boolean }) {
       active={live}
       settled={state.updatedAt > 0}
       facts={facts}
+      desks={desks}
+      deskNames={prefs.deskNames}
+      lane={prefs.elsewhere}
       summary={summary}
       notices={notices}
       onOpen={openRoomAgent}

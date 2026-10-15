@@ -43,6 +43,11 @@ describe('frames are cut down on arrival', () => {
         summary: 'Found three hotels near the station',
         files_read: [`/x/${MARKER}.txt`],
         files_written: [`/y/${MARKER}.txt`],
+        input_tokens: 1200,
+        output_tokens: 340,
+        reasoning_tokens: 56,
+        api_calls: 4,
+        cost_usd: 0.0123,
         output_tail: [{ tool: 'web_search', preview: MARKER, is_error: false }]
       }),
       raw('message.complete', 18, { text: MARKER, reasoning: MARKER, status: 'complete' })
@@ -86,6 +91,16 @@ describe('frames are cut down on arrival', () => {
     expect(JSON.stringify(facts)).not.toContain(MARKER)
     expect(JSON.stringify(summarizeRoom(state, at + 10))).not.toContain(MARKER)
     expect(state.agents['h:sa1'].result).toMatchObject({ status: 'completed', summary: 'Found three hotels near the station', filesRead: 1, filesWritten: 1 })
+  })
+
+  it('keeps a helper’s token, call and cost counts for cost meters, and never says them', () => {
+    const frame = roomFrame(raw('subagent.complete', 1, { subagent_id: 'a', goal: 'g', task_count: 1, task_index: 0, status: 'completed', input_tokens: 1200, output_tokens: 340, reasoning_tokens: 56, api_calls: 4, cost_usd: 0.0123 }))!
+    const state = reduceRoom(EMPTY_ROOM, { type: 'live', epoch: 'e1', frame, at: 5 })
+    const helper = state.agents['h:a']
+
+    expect(helper.result).toMatchObject({ inputTokens: 1200, outputTokens: 340, reasoningTokens: 56, apiCalls: 4, costUsd: 0.0123 })
+    expect(JSON.stringify([factsOf(helper, state, 6), summarizeRoom(state, 6)])).not.toMatch(/1200|340|0\.0123/)
+    expect(roomFrame(raw('subagent.complete', 2, { subagent_id: 'b', status: 'completed', input_tokens: -1, api_calls: 'many' }))).toMatchObject({ helper: { inputTokens: null, apiCalls: null } })
   })
 
   it('cuts a helper summary to 160 characters', () => {

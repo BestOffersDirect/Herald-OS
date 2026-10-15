@@ -34,6 +34,9 @@ function agent(id: string, patch: Partial<RoomAgent> = {}): RoomAgent {
     guardrail: null,
     result: null,
     toolCount: null,
+    desk: null,
+    automation: null,
+    elsewhere: null,
     trace: {},
     ...patch
   }
@@ -177,9 +180,9 @@ describe('RoomScene', () => {
   })
 
   it('heads the room with its counts and notices, and leaves the header out for a screensaver', () => {
-    const notices = roomNotices({ connected: false, state: { toolProgress: 'off', caps: { activeList: true, eventsSince: true, delegation: false, config: true } }, pets: 0 })
+    const notices = roomNotices({ connected: false, state: { toolProgress: 'off', caps: { activeList: true, eventsSince: true, delegation: false, config: true, automations: true, sessionsDb: true } }, pets: 0 })
     const onPetSettings = vi.fn()
-    render({ summary: { total: 3, working: 2, waiting: 1, idle: 0, helpers: 0, lines: [] }, notices, onPetSettings })
+    render({ summary: { total: 3, working: 2, waiting: 1, idle: 0, helpers: 0, automations: 0, elsewhere: 0, lines: [] }, notices, onPetSettings })
 
     expect(host.textContent).toContain('Pet Room')
     expect(host.textContent).toContain('2 working')
@@ -191,9 +194,66 @@ describe('RoomScene', () => {
 
     expect(onPetSettings).toHaveBeenCalledTimes(1)
 
-    render({ summary: { total: 3, working: 2, waiting: 1, idle: 0, helpers: 0, lines: [] }, notices, chrome: false })
+    render({ summary: { total: 3, working: 2, waiting: 1, idle: 0, helpers: 0, automations: 0, elsewhere: 0, lines: [] }, notices, chrome: false })
 
     expect(host.textContent).not.toContain('Pet Room')
     expect(host.textContent).not.toContain('Hermes is not connected')
+  })
+
+  it('shows no words at all as a screensaver, and nothing in it answers or opens', () => {
+    render({
+      agents: [
+        agent('s:1', { title: 'Budget review', phase: 'tool', area: 'docs', step: 'working on Launch plan.docx', desk: 'docs:k1' }),
+        agent('s:2', { title: 'Cleanup', phase: 'waiting', area: 'bench', approval })
+      ],
+      desks: [{ id: 'docs:k1', area: 'docs', name: 'Launch plan.docx', front: true, usedAt: 1 }],
+      facts: { 's:1': [{ kind: 'meeting', text: '2 agents on Launch plan.docx', trace: null }] },
+      chrome: false,
+      names: false,
+      deskNames: false,
+      steps: false,
+      interactive: false
+    })
+
+    expect(host.textContent?.trim()).toBe('')
+    expect(host.querySelectorAll('button')).toHaveLength(0)
+    expect(host.querySelector('[title]')).toBeNull()
+    expect(host.querySelector('ul')).toBeNull()
+    expect(onAnswer).not.toHaveBeenCalled()
+
+    render({ agents: [agent('s:1', { title: 'Budget review', phase: 'tool', area: 'docs', step: 'working on Launch plan.docx' })], chrome: false, names: false, deskNames: false, steps: true, interactive: false })
+
+    expect(host.textContent?.trim()).toBe('Working on Launch plan.docx')
+  })
+
+  it('puts the documents open in Office on desks, named only while desk names are on', () => {
+    const desks = [{ id: 'docs:k1', area: 'docs' as const, name: 'Launch plan.docx', front: true, usedAt: 1 }]
+    render({ desks })
+
+    expect(host.textContent).toContain('Launch plan.docx')
+
+    render({ desks, deskNames: false })
+
+    expect(host.textContent).not.toContain('Launch plan.docx')
+    expect(host.querySelector('[title="A document open in Herald Docs"]')).not.toBeNull()
+  })
+
+  it('shows work outside Herald in its lane only when the lane is on, and never opens it', () => {
+    const outside = agent('e:bot', { kind: 'elsewhere', title: 'Support bot', phase: 'thinking', area: 'elsewhere', sessionId: '', elsewhere: { where: 'Telegram', active: true, lastActiveAt: 1 } })
+    render({ agents: [outside] })
+
+    expect(host.textContent).not.toContain('Support bot')
+
+    render({ agents: [outside], lane: true, facts: { 'e:bot': [{ kind: 'activity', text: 'Telegram · active now', trace: null }] } })
+
+    expect(host.textContent).toContain('Support bot')
+    expect(host.textContent).toContain('Telegram · active now')
+    expect(host.textContent).toContain('Outside Herald')
+    expect(host.textContent).toContain("Coarse: titles and activity from Hermes's session list, once a minute")
+    expect(button('Open Support bot in Hermes')).toBeNull()
+
+    render({ agents: [], lane: true })
+
+    expect(host.textContent).toContain('No Hermes work outside Herald in the last hour.')
   })
 })

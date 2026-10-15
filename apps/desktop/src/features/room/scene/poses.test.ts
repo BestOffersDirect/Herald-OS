@@ -10,7 +10,7 @@ const sheet = (columns: number, counts: number[]): SheetLayout => layoutFromBlan
 const codex = sheet(8, [6, 8, 8, 4, 5, 8, 6, 8, 7])
 const legacy = sheet(9, [6, 4, 9, 7, 6, 5, 2, 2])
 
-const result = (status: RoomResult['status']): RoomResult => ({ status, summary: null, durationSeconds: null, filesRead: null, filesWritten: null, at: 1 })
+const result = (status: RoomResult['status']): RoomResult => ({ status, summary: null, durationSeconds: null, filesRead: null, filesWritten: null, inputTokens: null, outputTokens: null, reasoningTokens: null, apiCalls: null, costUsd: null, at: 1 })
 
 describe('poseOf', () => {
   it.each<[RoomPhase, string]>([

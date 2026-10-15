@@ -7,7 +7,7 @@ import type { AnimationClock } from '../../petdex/clock.ts'
 import type { RoomAgent, RoomHandoff } from '../model/types.ts'
 import { type ActorFrame, actorAt, type CarryKind, type HandoffPlan, marksAt, nextChangeAt, nextHandoffs, planHandoff, planMoving, REPLAY_MS } from './choreography.ts'
 import { bubbleText } from './labels.ts'
-import { assignSlots, depthOrder, type Rect, type SceneLayout, type SlotRef, slotPoint } from './layout.ts'
+import { assignSlots, deskSpot, depthOrder, type Rect, type RoomSpot, type SceneLayout, type SlotRef, slotPoint } from './layout.ts'
 import { type Body, bodyMoving, FADE_MS, fadeOut, spawnBody, stepBody } from './motion.ts'
 import { type Cell, cellAt, nextWake, poseOf } from './poses.ts'
 import { type SheetHolder, sheetRefs } from './sheets.ts'
@@ -138,10 +138,17 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
   const handled = new Set<string>()
   const departed = new Set<string>()
 
-  const targetOf = (id: string, area: RoomAgent['area']) => {
-    const slot = slots[id] ?? { area, slot: 0 }
+  /** Where an agent stands: at its desk when the room has one for it, else at its area's station. */
+  const spotOf = (agent: RoomAgent): RoomSpot => {
+    const desk = agent.desk ? deskSpot(agent.desk) : null
 
-    return slotPoint(layout!, slot.area, slot.slot)
+    return desk && layout?.stations.some(station => station.id === desk) ? desk : agent.area
+  }
+
+  const targetOf = (id: string, agent: RoomAgent) => {
+    const slot = slots[id] ?? { spot: spotOf(agent), slot: 0 }
+
+    return slotPoint(layout!, slot.spot, slot.slot)
   }
 
   /** A pet on its way out: it walks to the door (full motion), fades where it is (calm) or is gone (still). */
@@ -202,7 +209,10 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
       }
     }
 
-    slots = assignSlots(current.agents.filter(agent => !departed.has(agent.id)), slots)
+    slots = assignSlots(
+      current.agents.filter(agent => !departed.has(agent.id)).map(agent => ({ id: agent.id, spot: spotOf(agent) })),
+      slots
+    )
     const first = !baseline && (current.settled || current.agents.length > 0)
 
     if (first) {
@@ -224,8 +234,9 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
       }
 
       const comesIn = baseline && !first
-      const atDoor = comesIn && motion === 'full' && now >= settleUntil
-      const body = spawnBody(atDoor ? layout!.doorway : targetOf(agent.id, agent.area), now, motion, comesIn)
+      // Work outside Herald appears in its lane: it never comes through the room's door.
+      const atDoor = comesIn && motion === 'full' && now >= settleUntil && agent.area !== 'elsewhere'
+      const body = spawnBody(atDoor ? layout!.doorway : targetOf(agent.id, agent), now, motion, comesIn)
       pets.set(agent.id, { agent, body, look, pose: poseOf(agent, 0), since: now, arrivedAt: atDoor ? now : null })
     }
 
@@ -346,7 +357,7 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
       leavers.clear()
 
       for (const [id, pet] of pets) {
-        const target = targetOf(id, pet.agent.area)
+        const target = targetOf(id, pet.agent)
         pet.body = { ...pet.body, x: target.x, y: target.y, walking: false, opacity: 1, fade: null }
       }
     }
@@ -366,7 +377,7 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
 
       pet.body = held
         ? { x: held.x, y: held.y, facing: held.facing === 0 ? pet.body.facing : held.facing, walking: held.walking, opacity: held.opacity, fade: null }
-        : stepBody(pet.body, targetOf(id, pet.agent.area), dt, now, motion)
+        : stepBody(pet.body, targetOf(id, pet.agent), dt, now, motion)
       moving ||= held ? held.walking || held.opacity < 1 : bodyMoving(pet.body, now)
       setPose(pet, now)
       frames.push(frameOf(id, pet, now, false))
@@ -375,7 +386,8 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
     for (const [id, pet] of leavers) {
       const doorway = layout.doorway
       const atDoor = Math.hypot(pet.body.x - doorway.x, pet.body.y - doorway.y) < 1
-      let body = motion === 'full' && !atDoor ? stepBody(pet.body, doorway, dt, now, motion) : stepBody(pet.body, { x: pet.body.x, y: pet.body.y }, dt, now, motion)
+      const walksOut = motion === 'full' && !atDoor && pet.agent.area !== 'elsewhere'
+      let body = walksOut ? stepBody(pet.body, doorway, dt, now, motion) : stepBody(pet.body, { x: pet.body.x, y: pet.body.y }, dt, now, motion)
 
       if (!body.walking && !body.fade && body.opacity > 0) {
         body = fadeOut(body, now, motion)

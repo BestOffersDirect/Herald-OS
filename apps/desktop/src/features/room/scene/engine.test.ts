@@ -40,6 +40,9 @@ function agent(id: string, patch: Partial<RoomAgent> = {}): RoomAgent {
     guardrail: null,
     result: null,
     toolCount: null,
+    desk: null,
+    automation: null,
+    elsewhere: null,
     trace: {},
     ...patch
   }
@@ -318,7 +321,7 @@ describe('the room engine', () => {
     const working = agent('h', { kind: 'helper', parentId: 'p', phase: 'tool', area: 'terminal', startedAt: 2 })
     scene.feed([parent, working])
     scene.time.advance(SETTLE_MS)
-    const done = { ...working, phase: 'finished' as const, result: { status: 'completed' as const, summary: 'Found three budget files', durationSeconds: 4, filesRead: 3, filesWritten: 0, at: 1 } }
+    const done = { ...working, phase: 'finished' as const, result: { status: 'completed' as const, summary: 'Found three budget files', durationSeconds: 4, filesRead: 3, filesWritten: 0, inputTokens: null, outputTokens: null, reasoningTokens: null, apiCalls: null, costUsd: null, at: 1 } }
     scene.feed([parent, done], { handoffs: [handoff('result', 'h', 'p', scene.time.now())] })
     scene.time.advance(1)
     scene.time.advance(300)
@@ -349,7 +352,7 @@ describe('the room engine', () => {
   it('walks a helper out through the door when its hand-off is cut short', () => {
     const scene = setup()
     const parent = agent('p', { phase: 'thinking', area: 'docs' })
-    const done = agent('h', { kind: 'helper', parentId: 'p', phase: 'finished', area: 'terminal', result: { status: 'completed', summary: 'Done', durationSeconds: 1, filesRead: 0, filesWritten: 0, at: 1 } })
+    const done = agent('h', { kind: 'helper', parentId: 'p', phase: 'finished', area: 'terminal', result: { status: 'completed', summary: 'Done', durationSeconds: 1, filesRead: 0, filesWritten: 0, inputTokens: null, outputTokens: null, reasoningTokens: null, apiCalls: null, costUsd: null, at: 1 } })
     scene.feed([parent, done])
     scene.time.advance(SETTLE_MS)
     scene.feed([parent, done], { handoffs: [handoff('result', 'h', 'p', scene.time.now())] })

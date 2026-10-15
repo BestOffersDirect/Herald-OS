@@ -4,9 +4,9 @@
  * which one Hermes shows stay Hermes's (`display.pet`); the Room only borrows installed pets.
  */
 
-/** The kinds of work a pet can stand for; automations arrive with phase 2 of the Room. */
-export type RoomKind = 'conversation' | 'mission' | 'helper' | 'automation'
-export const ROOM_KINDS: readonly RoomKind[] = ['conversation', 'mission', 'helper', 'automation']
+/** The kinds of work a pet can stand for; `elsewhere` is Hermes work in other processes, shown only when the person opts in. */
+export type RoomKind = 'conversation' | 'mission' | 'helper' | 'automation' | 'elsewhere'
+export const ROOM_KINDS: readonly RoomKind[] = ['conversation', 'mission', 'helper', 'automation', 'elsewhere']
 
 /** How much the Room moves: walking and animated, animated in place, or still frames. */
 export type RoomMotion = 'full' | 'calm' | 'still'
@@ -21,13 +21,25 @@ export interface RoomPrefs {
   motion: RoomMotion
   /** Bubbles say what each pet is doing; off leaves name tags, signs and facts. */
   steps: boolean
+  /** The lane for Hermes work outside Herald (messaging bots, the CLI and TUI, Hermes's own app, cron run by the gateway); off unless the person turns it on. */
+  elsewhere: boolean
+  /** Desks show the names of the documents open on them, in the Room's window. */
+  deskNames: boolean
+  /** Herald's screensaver shows the Room: no names, document names or bubbles. */
+  screensaver: boolean
+  /** The screensaver's pets say their step labels. */
+  screensaverSteps: boolean
 }
 
 export const ROOM_PREFS_DEFAULTS: RoomPrefs = {
-  pets: { conversation: null, mission: null, helper: null, automation: null },
+  pets: { conversation: null, mission: null, helper: null, automation: null, elsewhere: null },
   tints: true,
   motion: 'full',
-  steps: true
+  steps: true,
+  elsewhere: false,
+  deskNames: true,
+  screensaver: false,
+  screensaverSteps: false
 }
 
 /** A change to the Room preferences: only the fields it names change, and the pets kind by kind. */
@@ -53,7 +65,11 @@ export function normalizeRoomPrefs(raw: unknown): RoomPrefs {
     pets: Object.fromEntries(ROOM_KINDS.map(kind => [kind, slugOrNull(pets[kind])])) as Record<RoomKind, string | null>,
     tints: source.tints !== false,
     motion: ROOM_MOTIONS.includes(source.motion as RoomMotion) ? (source.motion as RoomMotion) : ROOM_PREFS_DEFAULTS.motion,
-    steps: source.steps !== false
+    steps: source.steps !== false,
+    elsewhere: source.elsewhere === true,
+    deskNames: source.deskNames !== false,
+    screensaver: source.screensaver === true,
+    screensaverSteps: source.screensaverSteps === true
   }
 }
 

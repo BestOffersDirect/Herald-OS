@@ -24,6 +24,9 @@ function agent(id: string, patch: Partial<RoomAgent> = {}): RoomAgent {
     guardrail: null,
     result: null,
     toolCount: null,
+    desk: null,
+    automation: null,
+    elsewhere: null,
     trace: {},
     ...patch
   }
@@ -94,7 +97,7 @@ describe('layoutRoom', () => {
     const layout = layoutRoom(0, Number.NaN)
 
     expect(layout.width).toBeGreaterThan(0)
-    expect(layout.stations.length).toBe(AREA_DEFS.length)
+    expect(layout.stations.length).toBe(AREA_DEFS.filter(def => def.wall !== 'lane').length)
   })
 
   it('lays out whatever the table holds', () => {
@@ -217,31 +220,31 @@ describe('wallOf', () => {
 
 describe('assignSlots', () => {
   it('gives newcomers the lowest free slot of their area, in the order given', () => {
-    expect(assignSlots([{ id: 'a', area: 'docs' }, { id: 'b', area: 'docs' }, { id: 'c', area: 'terminal' }], {})).toEqual({
-      a: { area: 'docs', slot: 0 },
-      b: { area: 'docs', slot: 1 },
-      c: { area: 'terminal', slot: 0 }
+    expect(assignSlots([{ id: 'a', spot: 'docs' }, { id: 'b', spot: 'docs' }, { id: 'c', spot: 'terminal' }], {})).toEqual({
+      a: { spot: 'docs', slot: 0 },
+      b: { spot: 'docs', slot: 1 },
+      c: { spot: 'terminal', slot: 0 }
     })
   })
 
   it('keeps a staying agent in its slot when others come and go', () => {
-    const before = assignSlots([{ id: 'a', area: 'docs' }, { id: 'b', area: 'docs' }, { id: 'c', area: 'docs' }], {})
-    const after = assignSlots([{ id: 'd', area: 'docs' }, { id: 'c', area: 'docs' }], before)
+    const before = assignSlots([{ id: 'a', spot: 'docs' }, { id: 'b', spot: 'docs' }, { id: 'c', spot: 'docs' }], {})
+    const after = assignSlots([{ id: 'd', spot: 'docs' }, { id: 'c', spot: 'docs' }], before)
 
-    expect(after.c).toEqual({ area: 'docs', slot: 2 })
-    expect(after.d).toEqual({ area: 'docs', slot: 0 })
+    expect(after.c).toEqual({ spot: 'docs', slot: 2 })
+    expect(after.d).toEqual({ spot: 'docs', slot: 0 })
   })
 
-  it('finds a new slot for an agent that moved area', () => {
-    const before = assignSlots([{ id: 'a', area: 'docs' }, { id: 'b', area: 'docs' }], {})
-    const after = assignSlots([{ id: 'a', area: 'docs' }, { id: 'b', area: 'bench' }], before)
+  it('finds a new slot for an agent that moved spot', () => {
+    const before = assignSlots([{ id: 'a', spot: 'docs' }, { id: 'b', spot: 'docs' }], {})
+    const after = assignSlots([{ id: 'a', spot: 'docs' }, { id: 'b', spot: 'bench' }], before)
 
-    expect(after.b).toEqual({ area: 'bench', slot: 0 })
-    expect(after.a).toEqual({ area: 'docs', slot: 0 })
+    expect(after.b).toEqual({ spot: 'bench', slot: 0 })
+    expect(after.a).toEqual({ spot: 'docs', slot: 0 })
   })
 
   it('never puts two agents in one slot', () => {
-    const after = assignSlots([{ id: 'a', area: 'docs' }, { id: 'b', area: 'docs' }], { a: { area: 'docs', slot: 1 }, b: { area: 'docs', slot: 1 } })
+    const after = assignSlots([{ id: 'a', spot: 'docs' }, { id: 'b', spot: 'docs' }], { a: { spot: 'docs', slot: 1 }, b: { spot: 'docs', slot: 1 } })
 
     expect(after.a.slot).toBe(1)
     expect(after.b.slot).toBe(0)

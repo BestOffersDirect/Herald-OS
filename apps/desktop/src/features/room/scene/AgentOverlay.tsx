@@ -1,4 +1,4 @@
-import { IconAlertTriangle, IconBolt, IconCircleCheck, IconHandStop, IconMessageCircle, IconNote, IconSubtask, IconTarget } from '@tabler/icons-react'
+import { IconAlertTriangle, IconBolt, IconCircleCheck, IconHandStop, IconMessageCircle, IconNote, IconSubtask, IconTarget, IconWorld } from '@tabler/icons-react'
 import { type ComponentType, type CSSProperties, memo, type ReactNode } from 'react'
 import type { RoomKind } from '../../../../shared/room.ts'
 import { cn } from '../../../lib/cn.ts'
@@ -10,7 +10,7 @@ import { BUBBLE_RISE, type PetBox, tagWidth, wallOf } from './layout.ts'
 
 type Icon = ComponentType<{ size?: number; className?: string }>
 
-const KIND_ICONS: Record<RoomKind, Icon> = { conversation: IconMessageCircle, mission: IconTarget, helper: IconSubtask, automation: IconBolt }
+const KIND_ICONS: Record<RoomKind, Icon> = { conversation: IconMessageCircle, mission: IconTarget, helper: IconSubtask, automation: IconBolt, elsewhere: IconWorld }
 
 const CARRY: Record<CarryKind, { icon: Icon; tone: string }> = {
   note: { icon: IconNote, tone: 'text-accent-strong' },
@@ -62,6 +62,10 @@ export interface AgentOverlayProps {
   pet: PetBox
   facts: readonly RoomFact[]
   steps: boolean
+  /** The name tag, facts, the words on its sign and Hermes's result summary; off for a screensaver. */
+  names?: boolean
+  /** Its button opens the conversation and its sign the approval card; off for a screensaver and the lane. */
+  interactive?: boolean
   marks: PetMarks | null
   still: boolean
   signOpen: boolean
@@ -73,11 +77,11 @@ export interface AgentOverlayProps {
 }
 
 /** What stands with a pet: its button, name tag and facts, and above it a step bubble or a sign. */
-export const AgentOverlay = memo(function AgentOverlay({ agent, pet, facts, steps, marks, still, signOpen, rootRef, onOpen, onSign, children }: AgentOverlayProps) {
+export const AgentOverlay = memo(function AgentOverlay({ agent, pet, facts, steps, names = true, interactive = true, marks, still, signOpen, rootRef, onOpen, onSign, children }: AgentOverlayProps) {
   const title = agentTitle(agent)
   const KindIcon = KIND_ICONS[agent.kind]
   const step = steps ? displayStep(agent.step) : null
-  const said = marks?.bubble ?? null
+  const said = names ? (marks?.bubble ?? null) : null
   const carried = marks?.carry ? CARRY[marks.carry] : null
   const hit = { width: Math.round(pet.width * 0.66), height: Math.round(pet.height * 0.8) }
   const overhead = Math.round(pet.height * BUBBLE_RISE)
@@ -89,40 +93,50 @@ export const AgentOverlay = memo(function AgentOverlay({ agent, pet, facts, step
 
   return (
     <div ref={rootRef} className="group/pet pointer-events-none absolute top-0 left-0">
-      <button
-        type="button"
-        aria-label={`Open ${title} in Hermes`}
-        title={tooltip}
-        onClick={() => onOpen(agent.id)}
-        className="pointer-events-auto absolute rounded-2xl transition-colors duration-150 hover:bg-white/6"
-        style={{ left: -hit.width / 2, top: -hit.height - Math.round(pet.height * 0.04), width: hit.width, height: hit.height }}
-      />
-      <div className="absolute top-1.5 left-0 flex -translate-x-1/2 flex-col items-center gap-0.5">
-        <span className="flex items-center gap-1 rounded-full bg-bg-elevated px-2 py-0.5 text-[11px] leading-tight text-fg-2 hairline" style={{ maxWidth: widest }}>
-          <KindIcon size={11} className="shrink-0 text-fg-3" />
-          <span className="truncate">{title}</span>
-        </span>
-        {tagFacts(agent, facts, agent.approval ? null : (said ?? step)).slice(0, TAG_FACTS).map(fact => (
-          <span key={`${fact.kind}:${fact.text}`} className="line-clamp-2 w-max rounded-md bg-black/25 px-1.5 py-px text-center text-[10.5px] leading-tight text-fg-3" style={{ maxWidth: widest + 24 }}>
-            {fact.text}
+      {interactive && (
+        <button
+          type="button"
+          aria-label={agent.kind === 'automation' ? `Show ${title} in Automations` : `Open ${title} in Hermes`}
+          title={tooltip}
+          onClick={() => onOpen(agent.id)}
+          className="pointer-events-auto absolute rounded-2xl transition-colors duration-150 hover:bg-white/6"
+          style={{ left: -hit.width / 2, top: -hit.height - Math.round(pet.height * 0.04), width: hit.width, height: hit.height }}
+        />
+      )}
+      {names && (
+        <div className={cn('absolute top-1.5 left-0 flex -translate-x-1/2 flex-col items-center gap-0.5', !interactive && 'pointer-events-auto')} title={interactive ? undefined : tooltip}>
+          <span className="flex items-center gap-1 rounded-full bg-bg-elevated px-2 py-0.5 text-[11px] leading-tight text-fg-2 hairline" style={{ maxWidth: widest }}>
+            <KindIcon size={11} className="shrink-0 text-fg-3" />
+            <span className="truncate">{title}</span>
           </span>
-        ))}
-      </div>
+          {tagFacts(agent, facts, agent.approval ? null : (said ?? step)).slice(0, TAG_FACTS).map(fact => (
+            <span key={`${fact.kind}:${fact.text}`} className="line-clamp-2 w-max rounded-md bg-black/25 px-1.5 py-px text-center text-[10.5px] leading-tight text-fg-3" style={{ maxWidth: widest + 24 }}>
+              {fact.text}
+            </span>
+          ))}
+        </div>
+      )}
       {agent.approval ? (
         <div className="absolute left-0 flex -translate-x-1/2 flex-col items-center" style={{ bottom: overhead - 6 }}>
-          <button
-            type="button"
-            tabIndex={-1}
-            data-room-sign={agent.id}
-            aria-expanded={signOpen}
-            aria-label={`${title} needs your OK`}
-            onMouseDown={keepFocus}
-            onClick={() => onSign(agent.id)}
-            className={cn('pointer-events-auto flex items-center gap-1.5 rounded-lg border border-warn/50 bg-bg-elevated px-2.5 py-1 text-[11.5px] font-medium whitespace-nowrap text-warn shadow-float hover:bg-surface-3', !still && 'animate-pop')}
-          >
-            <IconHandStop size={13} />
-            Needs your OK
-          </button>
+          {interactive ? (
+            <button
+              type="button"
+              tabIndex={-1}
+              data-room-sign={agent.id}
+              aria-expanded={signOpen}
+              aria-label={`${title} needs your OK`}
+              onMouseDown={keepFocus}
+              onClick={() => onSign(agent.id)}
+              className={cn('pointer-events-auto flex items-center gap-1.5 rounded-lg border border-warn/50 bg-bg-elevated px-2.5 py-1 text-[11.5px] font-medium whitespace-nowrap text-warn shadow-float hover:bg-surface-3', !still && 'animate-pop')}
+            >
+              <IconHandStop size={13} />
+              {names && 'Needs your OK'}
+            </button>
+          ) : (
+            <span aria-hidden="true" className="flex items-center rounded-lg border border-warn/50 bg-bg-elevated px-1.5 py-1 text-warn shadow-float">
+              <IconHandStop size={13} />
+            </span>
+          )}
           <span className="h-2 w-0.5 rounded-b bg-warn/50" />
         </div>
       ) : said ? (

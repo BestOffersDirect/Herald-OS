@@ -368,10 +368,10 @@ describe('watermarks and epochs', () => {
     expect(state.seen['live-1']).toBe(3)
   })
 
-  it("resets to nothing but the stored session rows and this window's own approvals", () => {
+  it("resets to nothing but the stored session rows, this window's own approvals and Herald's own desks and commands", () => {
     const state = run(fold(list([{ id: 'live-1' }], T0), { type: 'session_meta', rows: [], at: T0 }), { type: 'reset', epoch: null, at: T0 + 5 })
 
-    expect(state).toEqual({ ...EMPTY_ROOM, meta: {}, local: [], updatedAt: T0 + 5 })
+    expect(state).toEqual({ ...EMPTY_ROOM, meta: {}, local: [], desks: {}, desksTrace: null, commands: [], updatedAt: T0 + 5 })
   })
 })
 
@@ -397,7 +397,7 @@ describe('caps and config', () => {
   it('turns parts of the Room off and keeps the rest', () => {
     const state = fold({ type: 'caps', caps: { delegation: false }, at: T0 })
 
-    expect(state.caps).toEqual({ activeList: true, eventsSince: true, delegation: false, config: true })
+    expect(state.caps).toEqual({ activeList: true, eventsSince: true, delegation: false, config: true, automations: true, sessionsDb: true })
   })
 
   it("lets idle sessions go after a long quiet when nothing lists Hermes's sessions", () => {

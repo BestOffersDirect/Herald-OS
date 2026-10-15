@@ -27,6 +27,8 @@ export interface RoomToolStep {
   area: RoomArea | null
   target: string | null
   step: string
+  /** The call works on the document in front of its app, which it does not name. */
+  front?: boolean
 }
 
 /** What the agent already shows, for calls that name less than the one before them. */
@@ -268,7 +270,7 @@ function officeStep(call: RoomToolCall, office: (typeof OFFICE)[string]): RoomTo
   const name = call.target ?? office.front
   const reads = OFFICE_READS.has(action) || action.startsWith('list_')
 
-  return { area: office.area, target: call.target, step: reads ? `reading ${name}` : `working on ${name}` }
+  return { area: office.area, target: call.target, step: reads ? `reading ${name}` : `working on ${name}`, front: !call.target }
 }
 
 function openStep(call: RoomToolCall): RoomToolStep {
@@ -307,7 +309,7 @@ export function describeTool(call: RoomToolCall, context: RoomToolContext = { cw
     case 'web_extract':
       return { area: 'browser', target, step: withTarget(target, t => `reading ${t}`, 'reading a web page') }
     case 'canvas':
-      return { area: 'canvas', target, step: `working on ${target ?? 'the image in front'}` }
+      return { area: 'canvas', target, step: `working on ${target ?? 'the image in front'}`, front: !target }
     case 'os_ui':
       return heraldStep(call)
     case 'system_open':

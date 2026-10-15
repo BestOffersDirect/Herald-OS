@@ -2,17 +2,29 @@ import type { RoomKind } from '../../../../shared/room.ts'
 
 /*
  * The Room's records: one per agent, folded from what Hermes reports (frames from a session's
- * event buffer or the live stream, `session.active_list` rows, `delegation.status` records and
- * open requests). Every field says where it came from, and nothing here holds chat text, file
- * content, tool arguments or Hermes's thinking: frames are cut down to the facts below on arrival.
+ * event buffer or the live stream, `session.active_list` rows, `delegation.status` records, open
+ * requests, Herald's automation records and, when the person opts in, Hermes's session database)
+ * and from what Herald knows itself (the documents its Office and Canvas windows have open, and
+ * which agent ran a command there). Every field says where it came from, and nothing here holds
+ * chat text, file content, tool arguments or Hermes's thinking: everything is cut down to the
+ * facts below on arrival.
  */
 
 export type { RoomKind }
 
-/** Where a pet stands: a work area for the tool it uses, the bench while it waits on the person, the lounge when it rests. */
-export type RoomArea = 'docs' | 'sheets' | 'slides' | 'canvas' | 'terminal' | 'browser' | 'files' | 'studio' | 'memory' | 'messages' | 'bench' | 'lounge'
+/**
+ * Where a pet stands: a work area for the tool it uses, the bench while it waits on the person, the
+ * lounge when it rests, the Automations corner for scheduled jobs, and the lane at the room's edge
+ * for Hermes work outside Herald.
+ */
+export type RoomArea = 'docs' | 'sheets' | 'slides' | 'canvas' | 'terminal' | 'browser' | 'files' | 'studio' | 'memory' | 'messages' | 'bench' | 'lounge' | 'automations' | 'elsewhere'
 
-export const ROOM_AREAS: readonly RoomArea[] = ['docs', 'sheets', 'slides', 'canvas', 'terminal', 'browser', 'files', 'studio', 'memory', 'messages', 'bench', 'lounge']
+export const ROOM_AREAS: readonly RoomArea[] = ['docs', 'sheets', 'slides', 'canvas', 'terminal', 'browser', 'files', 'studio', 'memory', 'messages', 'bench', 'lounge', 'automations', 'elsewhere']
+
+/** The areas whose open documents stand as desks. */
+export type RoomDeskArea = 'docs' | 'sheets' | 'slides' | 'canvas'
+
+export const DESK_AREAS: readonly RoomDeskArea[] = ['docs', 'sheets', 'slides', 'canvas']
 
 /**
  * What an agent is doing. Sessions: idle, starting (Hermes builds its agent), thinking (a turn
@@ -21,8 +33,12 @@ export const ROOM_AREAS: readonly RoomArea[] = ['docs', 'sheets', 'slides', 'can
  */
 export type RoomPhase = 'idle' | 'starting' | 'thinking' | 'tool' | 'waiting' | 'queued' | 'finished'
 
-/** Where a value came from: a frame (with its seq) or a record from one of Hermes's methods. */
-export type RoomSource = 'frame' | 'active_list' | 'delegation' | 'open_request' | 'local_request' | 'session_list' | 'config'
+/**
+ * Where a value came from: a frame (with its seq), a record from one of Hermes's methods or routes
+ * (automations' `/api/cron/jobs` and their runs, the session database's `/api/sessions`), the
+ * presence Herald's Office and Canvas windows report, or a command from the shell's log.
+ */
+export type RoomSource = 'frame' | 'active_list' | 'delegation' | 'open_request' | 'local_request' | 'session_list' | 'config' | 'cron_jobs' | 'cron_runs' | 'sessions_db' | 'presence' | 'command'
 
 export interface RoomTrace {
   source: RoomSource
@@ -35,7 +51,7 @@ export interface RoomTrace {
 }
 
 /** The fields a trace is kept for. */
-export type RoomField = 'kind' | 'title' | 'parent' | 'phase' | 'area' | 'target' | 'step' | 'approval' | 'asking' | 'repeat' | 'guardrail' | 'result' | 'lastEventAt'
+export type RoomField = 'kind' | 'title' | 'parent' | 'phase' | 'area' | 'target' | 'step' | 'approval' | 'asking' | 'repeat' | 'guardrail' | 'result' | 'desk' | 'automation' | 'elsewhere' | 'lastEventAt'
 
 /** A plain approval waiting on the person, with only what Herald's approval card shows. */
 export interface RoomApproval {
@@ -63,6 +79,58 @@ export interface RoomResult {
   durationSeconds: number | null
   filesRead: number | null
   filesWritten: number | null
+  /** What the helper's model calls cost, from the same frame; kept for cost meters, not shown yet. */
+  inputTokens: number | null
+  outputTokens: number | null
+  reasoningTokens: number | null
+  apiCalls: number | null
+  costUsd: number | null
+  at: number
+}
+
+/** A scheduled job's coarse status: cron agents send no gateway events, so this is all Herald's automation records say. */
+export interface RoomAutomation {
+  jobId: string
+  profile: string | null
+  paused: boolean
+  /** Its latest run is still going: Hermes's own `is_active`, not ended and heard from in the last five minutes. */
+  running: boolean
+  /** When the run under way started (ms). */
+  runStartedAt: number | null
+  /** When its last run was and how it ended, from the job's record. */
+  lastRunAt: number | null
+  lastOutcome: 'ok' | 'failed' | null
+}
+
+/** Hermes work in another process, from Hermes's session database: coarse, read at most once a minute. */
+export interface RoomElsewhere {
+  /** Where it runs, from a fixed table ('Telegram', 'the Hermes CLI'). */
+  where: string
+  active: boolean
+  lastActiveAt: number | null
+}
+
+/** A document open in Herald Docs, Sheets or Slides, or a Canvas project, standing as a desk in its area. */
+export interface RoomDesk {
+  /** `<area>:<the window's key for the document>`. */
+  id: string
+  area: RoomDeskArea
+  /** The document's name, its last path segment: never its path, selection or content. */
+  name: string
+  /** The document in front in its app's most recently used window. */
+  front: boolean
+  /** When its window was last used. */
+  usedAt: number
+}
+
+/** An Office or Canvas command an agent ran, cut down from the shell's command log: whose session, which app, and the document's name when the command named one. */
+export interface RoomCommand {
+  id: number
+  /** The command's id (`docs.write`), for traces. */
+  command: string
+  sessionId: string
+  area: RoomDeskArea
+  document: string | null
   at: number
 }
 
@@ -103,6 +171,12 @@ export interface RoomAgent {
   result: RoomResult | null
   /** Helpers: tools used so far, from `delegation.status` or `subagent.*` frames. */
   toolCount: number | null
+  /** The desk it works at: the open document in its area that its target, its latest command or the app's front document names. */
+  desk: string | null
+  /** Automations: the job's coarse status. */
+  automation: RoomAutomation | null
+  /** The elsewhere lane: where the work runs and how active it is. */
+  elsewhere: RoomElsewhere | null
   trace: Partial<Record<RoomField, RoomTrace>>
   /** What the Room works the phase, area and step out from; nothing to draw. */
   basis?: RoomBasis
@@ -123,9 +197,12 @@ export interface RoomBasis {
   toolArea: RoomArea | null
   toolTarget: string | null
   toolStep: string | null
+  /** The running tool works on the document in front of its app, which it does not name. */
+  toolFront: boolean
   /** The area and target of the turn's last tool, where the agent thinks between tools. */
   turnArea: RoomArea | null
   turnTarget: string | null
+  turnFront: boolean
   /** The session's working folder, by name. */
   cwd: string | null
   /** The session keeps a todo list (a mission). */
@@ -149,7 +226,7 @@ export interface RoomSessionMeta {
 
 /** Something true about an agent, said as a fact rather than a verdict ('quiet for 4 minutes during a turn'). */
 export interface RoomFact {
-  kind: 'waiting' | 'asking' | 'idle' | 'quiet' | 'repeat' | 'guardrail' | 'result' | 'toolsHidden'
+  kind: 'waiting' | 'asking' | 'idle' | 'quiet' | 'repeat' | 'guardrail' | 'result' | 'toolsHidden' | 'running' | 'lastRun' | 'paused' | 'activity' | 'meeting'
   text: string
   /** The record or frame the fact rests on. */
   trace: RoomTrace | null
@@ -171,6 +248,10 @@ export interface RoomCaps {
   eventsSince: boolean
   delegation: boolean
   config: boolean
+  /** Herald's automations (`/api/cron/jobs`). */
+  automations: boolean
+  /** Hermes's session database (`/api/sessions`), for the elsewhere lane. */
+  sessionsDb: boolean
 }
 
 export interface RoomState {
@@ -193,4 +274,14 @@ export interface RoomState {
   local?: RoomApproval[]
   /** Where `toolProgress` came from. */
   toolProgressTrace?: RoomTrace | null
+  /** The open documents and Canvas projects, by desk id, from Office and Canvas presence. */
+  desks?: Record<string, RoomDesk>
+  /** When the desks were last read. */
+  desksTrace?: RoomTrace | null
+  /** Recent Office and Canvas commands agents ran, newest first. */
+  commands?: RoomCommand[]
+  /** The elsewhere lane is on and has been read at least once. */
+  elsewhereOn?: boolean
+  /** When the elsewhere lane was last read: its labels are as of then. */
+  elsewhereAt?: number
 }

@@ -2,23 +2,35 @@ import { type ApprovalChoice, type GatewayEvent, JSON_RPC_METHOD_NOT_FOUND, type
 import { atom } from 'nanostores'
 import { useEffect } from 'react'
 import { approvalFacts } from '../../lib/approval-choices.ts'
+import { rest } from '../../lib/rest.ts'
+import { eventRuleFor } from '../../store/automations.ts'
 import { $activeChatId, $chats, openStoredSession } from '../../store/chat.ts'
 import { $connection, $connectionEpoch, $gatewayReady, gatewayRequest, isGatewayOpen, onAnyGatewayEvent, onServerRequest } from '../../store/gateway.ts'
+import { runCommand } from '../../store/os-commands.ts'
 import { $pendingRequests, type PendingRequest } from '../../store/requests.ts'
 import { $sessions } from '../../store/sessions.ts'
-import { isPanels, openSurface } from '../../store/shell.ts'
+import { isMainSurface, isPanels, openSurface, relayToMain } from '../../store/shell.ts'
 import { showPage } from '../../store/windows.ts'
+import { cronApi } from '../automations/api.ts'
 import { answerApproval } from '../pet/brain.ts'
+import { watchRoomCommands } from './commands.ts'
+import { cronJobSignature, type RoomCronJob, type RoomCronRun, roomCronJob, roomCronRun } from './model/automations.ts'
+import { roomDesks } from './model/desks.ts'
+import { ELSEWHERE_LIMIT, elsewhereRows, NOT_ELSEWHERE, roomElsewhereRow } from './model/elsewhere.ts'
 import { approvalOf, roomFrame, roomHelperRecord, roomRequest, roomSessionMeta, roomSessionRow } from './model/frames.ts'
 import { EMPTY_ROOM, nextPruneAt, reduceRoom, type RoomInput } from './model/reducer.ts'
-import { earliestDue, emptyClock, type RoomClock, roomDue } from './model/schedule.ts'
+import { earliestDue, emptyClock, ROOM_TIMING, type RoomClock, roomDue } from './model/schedule.ts'
 import type { RoomApproval, RoomCaps, RoomState } from './model/types.ts'
+import { $roomPrefs } from './prefs.ts'
 
 /*
  * The Room's feed: Hermes's records and frames, read on the schedule in model/schedule.ts while
  * something shows the Room, folded by model/reducer.ts into `$room`. It only ever asks Hermes for
- * session.active_list, session.events.since, delegation.status and config.get, and answers an
- * approval (approval.respond, or this window's own card) only when the person picks an answer.
+ * session.active_list, session.events.since, delegation.status and config.get, Herald's automations
+ * and their latest runs (the Automations page's routes) and, only while the person has the lane on,
+ * the session database's list for work elsewhere; it reads the documents Herald's own Office and
+ * Canvas windows have open and the commands agents ran there. It answers an approval
+ * (approval.respond, or this window's own card) only when the person picks an answer.
  */
 
 export { EMPTY_ROOM }
@@ -39,7 +51,9 @@ let clock: RoomClock = emptyClock()
 let generation = 0
 let helpersInitial = true
 let connectionEpoch: number | null = null
-const inflight = { list: false, helpers: false, config: false, sessions: new Set<string>() }
+const inflight = { list: false, helpers: false, config: false, sessions: new Set<string>(), automations: false, elsewhere: false, desks: false }
+/** Each job's record as last read: a job whose record moves has its latest run read again. */
+const jobSignatures = new Map<string, string>()
 /** Sessions the Room is reading now: their open requests come back re-delivered. */
 const reading = new Set<string>()
 /** Sessions whose frames reach this window live, and so their requests too. */
@@ -91,6 +105,7 @@ function restartRound(): void {
   clock = emptyClock()
   helpersInitial = true
   liveHere.clear()
+  jobSignatures.clear()
   batch = []
 }
 
@@ -136,9 +151,14 @@ function missingMethod(error: unknown): boolean {
   return Boolean(error && typeof error === 'object' && (error as { code?: unknown }).code === JSON_RPC_METHOD_NOT_FOUND)
 }
 
-/** A Hermes without the method: that part of the Room goes without it from now on. */
+/** A route this Hermes does not serve: `GET /api/… -> 404`, as Electron main words it. */
+function missingRoute(error: unknown): boolean {
+  return / -> 404\b/.test(error instanceof Error ? error.message : String(error))
+}
+
+/** A Hermes without the method or route: that part of the Room goes without it from now on. */
 function fallBack(error: unknown, cap: keyof RoomCaps): void {
-  if (missingMethod(error)) {
+  if (missingMethod(error) || missingRoute(error)) {
     dispatch({ type: 'caps', caps: { [cap]: false }, at: Date.now() })
   }
 }
@@ -303,6 +323,121 @@ async function readSession(sessionId: string): Promise<void> {
   }
 }
 
+/** A job as the Room shows it; one that runs when something happens is paused by design, so it does not count as paused. */
+function jobOf(raw: unknown): RoomCronJob | null {
+  const job = roomCronJob(raw)
+
+  return job && job.paused && eventRuleFor(job.id) ? { ...job, paused: false } : job
+}
+
+/** The job list, then the latest run of each job whose record moved or whose run is due. */
+async function readAutomations(dueRuns: readonly string[]): Promise<void> {
+  const round = generation
+  const sentAt = Date.now()
+
+  inflight.automations = true
+  clock.jobsAt = sentAt
+  clock.jobsChangedAt = null
+
+  try {
+    const jobs = rowsOf(await cronApi.list(), jobOf)
+
+    if (round !== generation) {
+      return
+    }
+
+    const moved = jobs.filter(job => jobSignatures.get(job.key) !== cronJobSignature(job)).map(job => job.key)
+    const reading = jobs.filter(job => moved.includes(job.key) || dueRuns.includes(job.key))
+    const runs: Record<string, RoomCronRun | null> = {}
+
+    await Promise.all(
+      reading.map(async job => {
+        try {
+          runs[job.key] = rowsOf(await cronApi.runs(job, 1), roomCronRun)[0] ?? null
+          clock.runsAt[job.key] = Date.now()
+        } catch {
+          // The next round reads it again.
+        }
+      })
+    )
+
+    if (round !== generation) {
+      return
+    }
+
+    for (const job of jobs) {
+      if (moved.includes(job.key)) {
+        // A run starts a moment after its job's record moves: read once more, soon.
+        clock.runsWanted[job.key] = Date.now() + ROOM_TIMING.runsRecheckMs
+      } else if (job.key in runs) {
+        delete clock.runsWanted[job.key]
+      }
+
+      jobSignatures.set(job.key, cronJobSignature(job))
+    }
+
+    dispatch({ type: 'automations', jobs, runs, at: Date.now() })
+  } catch (error) {
+    if (round === generation) {
+      fallBack(error, 'automations')
+    }
+  } finally {
+    inflight.automations = false
+    plan()
+  }
+}
+
+/** The elsewhere lane, only while the person has it on: Hermes's session list, cut down and filtered. */
+async function readElsewhere(): Promise<void> {
+  const round = generation
+
+  inflight.elsewhere = true
+  clock.elsewhereAt = Date.now()
+
+  try {
+    const result = await rest.get<{ sessions?: unknown[] }>('/api/sessions', { limit: ELSEWHERE_LIMIT, order: 'recent', exclude_sources: NOT_ELSEWHERE.join(',') })
+
+    if (round !== generation || !$roomPrefs.get().elsewhere) {
+      return
+    }
+
+    const agents = Object.values($room.get().agents)
+    const sessionKeys = new Set(agents.flatMap(agent => (agent.id.startsWith('s:') && agent.sessionKey ? [agent.sessionKey] : [])))
+    const jobIds = new Set(agents.flatMap(agent => (agent.automation ? [agent.automation.jobId] : [])))
+    const rows = elsewhereRows(rowsOf(result?.sessions, roomElsewhereRow), { sessionKeys, jobIds }, Date.now())
+
+    dispatch({ type: 'elsewhere', rows, at: Date.now() })
+  } catch (error) {
+    if (round === generation) {
+      fallBack(error, 'sessionsDb')
+    }
+  } finally {
+    inflight.elsewhere = false
+    plan()
+  }
+}
+
+/** What a window reports, or nothing when it cannot say. */
+const presenceOf = (read: () => Promise<unknown[]>): Promise<unknown[]> =>
+  Promise.resolve()
+    .then(read)
+    .catch(() => [])
+
+/** The documents Herald's Office and Canvas windows have open, by name. */
+async function readDesks(): Promise<void> {
+  inflight.desks = true
+  clock.desksAt = Date.now()
+
+  try {
+    const [office, canvas] = await Promise.all([presenceOf(() => window.heraldOS.office.presence()), presenceOf(() => window.heraldOS.canvas.presence())])
+
+    dispatch({ type: 'desks', desks: roomDesks(office, canvas), at: Date.now() })
+  } finally {
+    inflight.desks = false
+    plan()
+  }
+}
+
 function flushLive(): void {
   batchTimer = null
 
@@ -316,6 +451,13 @@ function flushLive(): void {
 function onLive(event: GatewayEvent): void {
   if (event.type === 'sessions.changed') {
     clock.changedAt = Date.now()
+    plan()
+
+    return
+  }
+
+  if (event.type === 'cron.changed') {
+    clock.jobsChangedAt = Date.now()
     plan()
 
     return
@@ -335,6 +477,8 @@ function onLive(event: GatewayEvent): void {
   batchTimer ??= setTimeout(flushLive, LIVE_BATCH_MS)
 }
 
+const dueOptions = () => ({ elsewhere: $roomPrefs.get().elsewhere })
+
 function runDue(now: number): void {
   const prune = nextPruneAt($room.get())
 
@@ -342,10 +486,23 @@ function runDue(now: number): void {
     dispatch({ type: 'tick', now })
   }
 
-  const due = roomDue($room.get(), clock, pausedSessions())
+  const due = roomDue($room.get(), clock, pausedSessions(), dueOptions())
+  const dueRuns = Object.entries(due.runs).flatMap(([key, at]) => (at <= now ? [key] : []))
 
   if (!inflight.list && due.activeList <= now) {
     void readList()
+  }
+
+  if (!inflight.automations && (due.automations <= now || dueRuns.length > 0)) {
+    void readAutomations(dueRuns)
+  }
+
+  if (!inflight.elsewhere && due.elsewhere <= now) {
+    void readElsewhere()
+  }
+
+  if (!inflight.desks && due.desks <= now) {
+    void readDesks()
   }
 
   if (!inflight.helpers && due.delegation <= now) {
@@ -378,7 +535,7 @@ function plan(): void {
   runDue(now)
 
   const state = $room.get()
-  const wake = Math.min(earliestDue(roomDue(state, clock, pausedSessions()), inflight), nextPruneAt(state) ?? Infinity)
+  const wake = Math.min(earliestDue(roomDue(state, clock, pausedSessions(), dueOptions()), inflight), nextPruneAt(state) ?? Infinity)
 
   if (Number.isFinite(wake)) {
     timer = setTimeout(plan, Math.max(MIN_WAKE_MS, wake - now))
@@ -406,6 +563,18 @@ function start(): void {
       plan()
     }),
     $sessions.subscribe(rows => dispatch({ type: 'session_meta', rows: rowsOf(rows, roomSessionMeta), at: Date.now() })),
+    watchRoomCommands(commands => dispatch({ type: 'commands', commands, at: Date.now() })),
+    $roomPrefs.listen(prefs => {
+      const on = $room.get().elsewhereOn === true
+
+      if (on && !prefs.elsewhere) {
+        dispatch({ type: 'elsewhere', rows: null, at: Date.now() })
+      } else if (!on && prefs.elsewhere) {
+        clock.elsewhereAt = null
+      }
+
+      plan()
+    }),
     $connectionEpoch.listen(() => {
       syncConnection()
       plan()
@@ -492,9 +661,17 @@ export async function refreshRoomOnce(): Promise<RoomState> {
     reads.push(readHelpers())
   }
 
+  if (state.caps.automations && !inflight.automations) {
+    reads.push(readAutomations([]))
+  }
+
+  if ($roomPrefs.get().elsewhere && state.caps.sessionsDb && !inflight.elsewhere) {
+    reads.push(readElsewhere())
+  }
+
   if (state.caps.eventsSince) {
     for (const agent of Object.values(state.agents)) {
-      if (agent.kind !== 'helper' && agent.sessionId && !inflight.sessions.has(agent.sessionId) && !paused.has(agent.sessionId)) {
+      if (agent.id.startsWith('s:') && agent.sessionId && !inflight.sessions.has(agent.sessionId) && !paused.has(agent.sessionId)) {
         reads.push(readSession(agent.sessionId))
       }
     }
@@ -542,11 +719,32 @@ export async function answerRoomApproval(agentId: string, choice: ApprovalChoice
   }
 }
 
-/** Open the agent's conversation in Hermes (a helper opens its parent's). */
+/** Automations, focused on the job, in the Hermes window (its own window in panels mode). */
+function showAutomation(name: string): void {
+  if (isMainSurface) {
+    void runCommand('automation.show', { name }, { source: 'ui' })
+
+    return
+  }
+
+  relayToMain({ type: 'os', args: ['automation.show'], payload: { name } })
+  openSurface('main')
+}
+
+/**
+ * Open the agent's conversation in Hermes (a helper opens its parent's), or an automation's job.
+ * Work elsewhere opens nothing: it belongs to another Hermes process.
+ */
 export function openRoomAgent(agentId: string): void {
   const agent = $room.get().agents[agentId]
 
-  if (!agent) {
+  if (!agent || agent.kind === 'elsewhere') {
+    return
+  }
+
+  if (agent.kind === 'automation') {
+    showAutomation(agent.title)
+
     return
   }
 

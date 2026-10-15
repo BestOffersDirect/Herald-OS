@@ -86,8 +86,8 @@ describe('the area table', () => {
   })
 
   it('names Office documents, or the one in front', () => {
-    expect(step('docs', { action: 'write', document: '~/Letters/Offer.docx', content: 'Dear…' })).toEqual({ area: 'docs', target: 'Offer.docx', step: 'working on Offer.docx' })
-    expect(step('docs', { action: 'read' })).toEqual({ area: 'docs', target: null, step: 'reading the document in front' })
+    expect(step('docs', { action: 'write', document: '~/Letters/Offer.docx', content: 'Dear…' })).toEqual({ area: 'docs', target: 'Offer.docx', step: 'working on Offer.docx', front: false })
+    expect(step('docs', { action: 'read' })).toEqual({ area: 'docs', target: null, step: 'reading the document in front', front: true })
     expect(step('sheets', { action: 'read', workbook: 'Budget.xlsx' }).step).toBe('reading Budget.xlsx')
     expect(step('sheets', { action: 'list_charts', workbook: 'Budget.xlsx' }).step).toBe('reading Budget.xlsx')
     expect(step('sheets', { action: 'fill' }).step).toBe('working on the workbook in front')
@@ -96,8 +96,8 @@ describe('the area table', () => {
   })
 
   it('puts images in the canvas area', () => {
-    expect(step('canvas', { action: 'add_text', project: '~/Art/poster.comp' })).toEqual({ area: 'canvas', target: 'poster.comp', step: 'working on poster.comp' })
-    expect(step('canvas', { action: 'preview' }).step).toBe('working on the image in front')
+    expect(step('canvas', { action: 'add_text', project: '~/Art/poster.comp' })).toEqual({ area: 'canvas', target: 'poster.comp', step: 'working on poster.comp', front: false })
+    expect(step('canvas', { action: 'preview' })).toMatchObject({ step: 'working on the image in front', front: true })
     expect(step('image_generate', { prompt: 'a cat' })).toEqual({ area: 'canvas', target: null, step: 'making an image' })
   })
 

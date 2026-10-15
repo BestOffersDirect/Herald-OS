@@ -6,7 +6,7 @@ import { cn } from '../../../lib/cn.ts'
 import type { RoomSummary } from '../model/summary.ts'
 import { type CountId, countsOf, type RoomNotice, type RoomNoticeId } from './labels.ts'
 
-const COUNT_TONES: Record<CountId, PillTone> = { working: 'progress', waiting: 'warn', idle: 'muted', helpers: 'muted' }
+const COUNT_TONES: Record<CountId, PillTone> = { working: 'progress', waiting: 'warn', idle: 'muted', helpers: 'muted', automations: 'muted', elsewhere: 'muted' }
 
 const NOTICE_ICONS: Record<RoomNoticeId, ComponentType<{ size?: number; className?: string }>> = {
   offline: IconPlugConnectedX,

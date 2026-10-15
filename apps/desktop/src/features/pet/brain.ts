@@ -358,6 +358,9 @@ async function sampleAutomations(): Promise<void> {
 
 let slidesWatched = false
 
+/** Herald Slides is presenting in this window (desktop mode; panels mode asks the compositor). */
+export const heraldPresenting = (): boolean => presenting
+
 /** Herald Slides presenting, in this window: its store loads with the app, so only look once a Slides window is open. */
 function watchSlides(): void {
   $windows.subscribe(windows => {

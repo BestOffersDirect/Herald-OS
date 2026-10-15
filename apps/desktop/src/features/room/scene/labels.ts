@@ -7,9 +7,9 @@ import type { RoomAgent, RoomCaps, RoomFact, RoomPhase, RoomResult, RoomState } 
  * text, file content, tool arguments or Hermes's thinking.
  */
 
-const UNTITLED: Record<RoomKind, string> = { conversation: 'A conversation', mission: 'A mission', helper: 'A helper', automation: 'An automation' }
+const UNTITLED: Record<RoomKind, string> = { conversation: 'A conversation', mission: 'A mission', helper: 'A helper', automation: 'An automation', elsewhere: 'A Hermes session' }
 
-export const KIND_NAMES: Record<RoomKind, string> = { conversation: 'Conversation', mission: 'Mission', helper: 'Helper', automation: 'Automation' }
+export const KIND_NAMES: Record<RoomKind, string> = { conversation: 'Conversation', mission: 'Mission', helper: 'Helper', automation: 'Automation', elsewhere: 'Outside Herald' }
 
 /** The agent's title, or what it is when Hermes has not named it yet. */
 export function agentTitle(agent: Pick<RoomAgent, 'title' | 'kind'>): string {
@@ -98,7 +98,7 @@ export function tagFacts(agent: Pick<RoomAgent, 'approval'>, facts: readonly Roo
   return facts.filter(fact => !(agent.approval && fact.kind === 'waiting') && fact.text.toLowerCase() !== said)
 }
 
-export type CountId = 'working' | 'waiting' | 'idle' | 'helpers'
+export type CountId = 'working' | 'waiting' | 'idle' | 'helpers' | 'automations' | 'elsewhere'
 
 /** The header's counts, leaving out the empty ones. */
 export function countsOf(summary: Pick<RoomSummary, CountId>): { id: CountId; text: string }[] {
@@ -106,7 +106,9 @@ export function countsOf(summary: Pick<RoomSummary, CountId>): { id: CountId; te
     working: count => `${count} working`,
     waiting: count => `${count} waiting for you`,
     idle: count => `${count} idle`,
-    helpers: count => `${count} ${count === 1 ? 'helper' : 'helpers'}`
+    helpers: count => `${count} ${count === 1 ? 'helper' : 'helpers'}`,
+    automations: count => `${count} ${count === 1 ? 'automation' : 'automations'} running`,
+    elsewhere: count => `${count} active outside Herald`
   }
 
   return (Object.keys(texts) as CountId[]).filter(id => summary[id] > 0).map(id => ({ id, text: texts[id](summary[id]) }))
@@ -116,7 +118,9 @@ const CAPS: Record<keyof RoomCaps, string> = {
   activeList: 'its running sessions',
   eventsSince: 'what its sessions did before the Room opened',
   delegation: 'its helpers',
-  config: 'its settings'
+  config: 'its settings',
+  automations: 'its automations',
+  sessionsDb: 'its sessions outside Herald'
 }
 
 function orList(parts: readonly string[]): string {
@@ -150,5 +154,7 @@ export function roomNotices({ connected, state, pets }: { connected: boolean; st
 }
 
 export const EMPTY_ROOM_TEXT = 'No Hermes work right now. Pets come in when Hermes starts working in Herald.'
+
+export const EMPTY_LANE_TEXT = 'No Hermes work outside Herald in the last hour.'
 
 export const moreText = (count: number): string => `+${count} more`

@@ -8,13 +8,13 @@ const T0 = 100_000
 const idleRow = (id: string): RoomSessionRow => ({ id, sessionKey: `k-${id}`, status: 'idle', title: '', startedAt: null })
 const workingRow = (id: string): RoomSessionRow => ({ ...idleRow(id), status: 'working' })
 const listOf = (rows: RoomSessionRow[]): RoomState => reduceRoom(EMPTY_ROOM, { type: 'active_list', rows, sentAt: T0, at: T0 })
-const clockAt = (patch: Partial<RoomClock>): RoomClock => ({ ...emptyClock(), listed: true, listAt: T0, helpersAt: T0, configAt: T0, ...patch })
-const none = { list: false, helpers: false, config: false, sessions: new Set<string>() }
+const clockAt = (patch: Partial<RoomClock>): RoomClock => ({ ...emptyClock(), listed: true, listAt: T0, helpersAt: T0, configAt: T0, jobsAt: T0, desksAt: T0, ...patch })
+const none = { list: false, helpers: false, config: false, sessions: new Set<string>(), automations: false, elsewhere: false, desks: false }
 
 describe('when each call is due', () => {
   it('asks for everything at once on the first look, the list before anything else', () => {
-    expect(roomDue(listOf([idleRow('a')]), emptyClock())).toEqual({ activeList: 0, delegation: Infinity, config: Infinity, sessions: {} })
-    expect(roomDue(listOf([idleRow('a')]), { ...emptyClock(), listAt: T0, listed: true })).toEqual({ activeList: T0 + 15_000, delegation: 0, config: 0, sessions: { a: 0 } })
+    expect(roomDue(listOf([idleRow('a')]), emptyClock())).toEqual({ activeList: 0, delegation: Infinity, config: Infinity, sessions: {}, automations: 0, runs: {}, elsewhere: Infinity, desks: 0 })
+    expect(roomDue(listOf([idleRow('a')]), { ...emptyClock(), listAt: T0, listed: true })).toEqual({ activeList: T0 + 15_000, delegation: 0, config: 0, sessions: { a: 0 }, automations: 0, runs: {}, elsewhere: Infinity, desks: 0 })
   })
 
   it('reads the list every 3 s while anything works, every 15 s when quiet, and soon after sessions.changed', () => {
@@ -56,9 +56,9 @@ describe('when each call is due', () => {
   })
 
   it('stops asking for what Hermes does not have', () => {
-    const state: RoomState = { ...listOf([workingRow('w')]), caps: { activeList: false, eventsSince: false, delegation: false, config: false } }
+    const state: RoomState = { ...listOf([workingRow('w')]), caps: { activeList: false, eventsSince: false, delegation: false, config: false, automations: false, sessionsDb: false } }
 
-    expect(roomDue(state, emptyClock())).toEqual({ activeList: Infinity, delegation: Infinity, config: Infinity, sessions: {} })
+    expect(roomDue(state, emptyClock())).toEqual({ activeList: Infinity, delegation: Infinity, config: Infinity, sessions: {}, automations: Infinity, runs: {}, elsewhere: Infinity, desks: 0 })
   })
 
   it('sleeps until the earliest call not already in flight', () => {
@@ -66,6 +66,6 @@ describe('when each call is due', () => {
 
     expect(earliestDue(due, none)).toBe(T0 + 1_000)
     expect(earliestDue(due, { ...none, sessions: new Set(['w']) })).toBe(T0 + 3_000)
-    expect(earliestDue({ activeList: Infinity, delegation: Infinity, config: Infinity, sessions: {} }, none)).toBe(Infinity)
+    expect(earliestDue({ activeList: Infinity, delegation: Infinity, config: Infinity, sessions: {}, automations: Infinity, runs: {}, elsewhere: Infinity, desks: Infinity }, none)).toBe(Infinity)
   })
 })
