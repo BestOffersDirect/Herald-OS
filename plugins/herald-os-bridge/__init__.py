@@ -6,18 +6,21 @@ Hermes act on the computer it is running on. Execution goes through a per-platfo
 ``bridge.permissions`` (tiers, protected paths, the upstream approval gate), and every call is
 recorded by ``bridge.audit``. ``system_os`` (registered from the same ``TOOL_SPECS`` table) drives
 Herald OS Linux's ``herald-os`` CLI and answers with a clear failure on other platforms. The tools
-are offered and run only in Herald OS's own sessions (``bridge.scope``).
+are offered and run only in Herald OS's own sessions (``bridge.scope``). ``bridge.observe`` adds
+observer hooks that tell the Pet Room about Hermes's work outside Herald OS, only while a running
+Herald OS asks for it.
 
 Out-of-tree by design: the plugin uses only public plugin APIs (``register``,
-``ctx.register_tool``, ``ctx.register_skill``, ``tools.approval.request_tool_approval``) and the
-session variables Hermes binds for tools (``gateway.session_context.get_session_env``) so Herald
-OS never patches the Hermes core.
+``ctx.register_tool``, ``ctx.register_skill``, ``ctx.register_hook``,
+``tools.approval.request_tool_approval``) and the session variables Hermes binds for tools
+(``gateway.session_context.get_session_env``) so Herald OS never patches the Hermes core.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from .bridge import observe as _observe
 from .bridge import scope as _scope
 from .bridge import tools as _tools
 from .bridge.host import host_available
@@ -59,6 +62,8 @@ def register(ctx) -> None:
             emoji=spec.emoji,
             description=spec.schema["description"],
         )
+    if hasattr(ctx, "register_hook"):
+        _observe.register(ctx)
     if not hasattr(ctx, "register_skill"):
         return
     for name, description in SKILLS.items():

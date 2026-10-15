@@ -27,3 +27,12 @@ provides_tools:
   - system_files
   - system_documents
   - system_os
+provides_hooks:
+  - pre_tool_call
+  - post_tool_call
+  - subagent_start
+  - subagent_stop
+  - on_session_start
+  - on_session_end
+  - pre_approval_request
+  - post_approval_response
