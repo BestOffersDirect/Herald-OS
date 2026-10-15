@@ -40,7 +40,7 @@ const bridge = vi.hoisted(() => {
     prefs: null as HeraldOSPrefs | null
   }
   const merge = (patch: PrefsPatch): HeraldOSPrefs => {
-    state.prefs = { ...state.prefs!, ...patch, notify: { ...state.prefs!.notify, ...patch.notify } }
+    state.prefs = { ...state.prefs!, ...(patch as Partial<HeraldOSPrefs>), notify: { ...state.prefs!.notify, ...patch.notify } }
 
     return state.prefs
   }

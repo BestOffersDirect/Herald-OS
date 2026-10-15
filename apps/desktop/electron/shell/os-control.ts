@@ -41,7 +41,7 @@ export class OsCommandBridge {
     })
   }
 
-  private send(request: { kind: 'run'; command: string; args: Record<string, unknown>; source: 'agent' | 'cli' | 'plugin' } | { kind: 'list' } | { kind: 'state' }): Promise<OsControlReply> {
+  private send(request: { kind: 'run'; command: string; args: Record<string, unknown>; source: 'agent' | 'cli' | 'plugin'; session: string | null } | { kind: 'list' } | { kind: 'state' }): Promise<OsControlReply> {
     const win = this.getWindow()
 
     if (!win || win.isDestroyed()) {
@@ -63,8 +63,8 @@ export class OsCommandBridge {
     })
   }
 
-  run(command: string, args: Record<string, unknown>, source: 'agent' | 'cli' | 'plugin'): Promise<OsControlReply> {
-    return this.send({ kind: 'run', command, args, source })
+  run(command: string, args: Record<string, unknown>, source: 'agent' | 'cli' | 'plugin', session: string | null = null): Promise<OsControlReply> {
+    return this.send({ kind: 'run', command, args, source, session })
   }
 
   list(): Promise<OsControlReply> {
@@ -82,6 +82,17 @@ export interface UiControlRequest {
   command?: string
   args?: unknown
   source?: string
+  /** The live Hermes UI session whose tool sent a `ui` request; bridges from before it send none. */
+  session?: unknown
+}
+
+/** A Hermes UI session id as the bridge sends it (the tui_gateway's `sid`). */
+const SESSION_ID = /^[A-Za-z0-9_.:-]{1,128}$/
+
+function requestSession(value: unknown): string | null {
+  const session = typeof value === 'string' ? value.trim() : ''
+
+  return SESSION_ID.test(session) ? session : null
 }
 
 let controlToken = ''
@@ -102,7 +113,7 @@ export function isUiRequest(cmd: string): boolean {
 }
 
 /** Serve one `ui*` request through the bridge; `null` when `cmd` is not a UI request. */
-export async function handleUiRequest(request: UiControlRequest, bridge: OsCommandBridge): Promise<Record<string, unknown> | null> {
+export async function handleUiRequest(request: UiControlRequest, bridge: Pick<OsCommandBridge, 'run' | 'list' | 'state'>): Promise<Record<string, unknown> | null> {
   if (!isUiRequest(request.cmd)) {
     return null
   }
@@ -120,7 +131,7 @@ export async function handleUiRequest(request: UiControlRequest, bridge: OsComma
       }
 
       const args = request.args && typeof request.args === 'object' && !Array.isArray(request.args) ? (request.args as Record<string, unknown>) : {}
-      reply = await bridge.run(request.command, args, request.source === 'cli' ? 'cli' : 'agent')
+      reply = await bridge.run(request.command, args, request.source === 'cli' ? 'cli' : 'agent', requestSession(request.session))
 
       break
     }

@@ -7,7 +7,7 @@ import type { MenuBarLayout } from './menu-bar.ts'
 import type { OfficeApp } from './office/files.ts'
 import type { PetPrefs } from './pet.ts'
 import type { QrReading } from './qr.ts'
-import type { RoomPrefs } from './room.ts'
+import type { RoomPrefs, RoomPrefsPatch } from './room.ts'
 import type { ColorScheme, ThemeColors } from './theme.ts'
 
 /** `waiting`: there is no Hermes Agent to start yet; the shell starts one as soon as it is installed. */
@@ -538,7 +538,7 @@ export type EditAction =
 
 /** Main -> renderer: run a registry command, list the catalogue, or describe the shell state. */
 export type OsControlRequest =
-  | { requestId: string; kind: 'run'; command: string; args: Record<string, unknown>; source: 'agent' | 'cli' | 'plugin' }
+  | { requestId: string; kind: 'run'; command: string; args: Record<string, unknown>; source: 'agent' | 'cli' | 'plugin'; session?: string | null }
   | { requestId: string; kind: 'list' }
   | { requestId: string; kind: 'state' }
 
@@ -614,8 +614,11 @@ export interface HeraldOSPrefs {
   notify: NotifyPrefs
 }
 
-/** A prefs write: top-level fields replace what is saved; `notify` is merged switch by switch in main. */
-export type PrefsPatch = Partial<Omit<HeraldOSPrefs, 'notify'>> & { notify?: Partial<NotifyPrefs> }
+/**
+ * A prefs write: top-level fields replace what is saved; `notify`, `pet` and `room` are merged field
+ * by field in main, so a window names only what it changes (its copy of the rest may be stale).
+ */
+export type PrefsPatch = Partial<Omit<HeraldOSPrefs, 'notify' | 'pet' | 'room'>> & { notify?: Partial<NotifyPrefs>; pet?: Partial<PetPrefs>; room?: RoomPrefsPatch }
 
 export type ScreenshotMode = 'region' | 'window' | 'screen'
 
@@ -761,6 +764,8 @@ export interface ShellCommand {
   /** The compositor's focused window when the command was issued (context for "ask"). */
   context?: WmWindow | null
   payload?: Record<string, unknown>
+  /** Delivered only to a surface whose window is open; a relay with it never opens one. */
+  ifOpen?: boolean
 }
 
 /** A rectangle in the renderer's CSS pixels; main converts to device-independent pixels. */

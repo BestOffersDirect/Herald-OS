@@ -31,6 +31,15 @@ unrestricted machine access.
 "Start my development environment" is a skill: it composes `system_open` with Hermes's existing
 `terminal` tool rather than adding another core-shaped tool.
 
+`os_ui`, `canvas`, `docs`, `sheets` and `slides`, and `system_open` for the pages, files and folders
+it opens inside Herald OS, run commands of the shell's registry over its control socket
+(`bridge/ui.py`): one JSON line per request, with the per-launch token the shell gives the backend.
+A `ui` request, which runs one command, also carries `session`: the live Hermes UI session id that
+Hermes binds for tools (`HERMES_UI_SESSION_ID`), so the shell can tell which conversation's agent ran
+the command. The Pet Room uses it to put the right pet at a document's desk. It is optional: the
+bridge leaves it out when Hermes binds none, a shell from before it ignores it, and the shell runs a
+request without it.
+
 ## Documents
 
 "Find the invoice from Acme in my Downloads, rename it properly and put it where it belongs" is the
