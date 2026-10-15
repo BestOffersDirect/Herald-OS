@@ -156,13 +156,17 @@ const LANE_MIN = 132
 const LANE_MAX = 220
 /** The lane's header (its name and that it is coarse) is about this tall. */
 export const LANE_HEADER = 52
+/** The height of a cost meter's line under a name tag. */
+export const METER_LINE = 15
 
 /**
  * The floor plan for a scene of `width` x `height` CSS pixels: with `desks`, a desk for each open
  * document (as many as fit below its app's station), and with `lane`, the strip for work outside
  * Herald along the right edge, which the room gives up its width for.
  */
-export function layoutRoom(width: number, height: number, defs: readonly AreaDef[] = AREA_DEFS, extra: { desks?: readonly DeskInput[]; lane?: boolean } = {}): SceneLayout {
+export function layoutRoom(width: number, height: number, defs: readonly AreaDef[] = AREA_DEFS, extra: { desks?: readonly DeskInput[]; lane?: boolean; meters?: boolean } = {}): SceneLayout {
+  // A cost meter is one more line under each name tag: the front row and the lane's rows make room for it.
+  const meterLine = extra.meters ? METER_LINE : 0
   const full = Math.max(320, Number.isFinite(width) ? width : 0)
   const laneWidth = extra.lane ? round(clamp(full * LANE_SHARE, LANE_MIN, LANE_MAX)) : 0
   const w = Math.max(320, full - laneWidth)
@@ -176,7 +180,7 @@ export function layoutRoom(width: number, height: number, defs: readonly AreaDef
   const tileHeight = round(unit * 0.95)
   const wallHeight = round(unit * 1.75)
   const sideWidth = round(unit * 1.75)
-  const bottom = h - pad
+  const bottom = h - pad - meterLine
   const door: Rect = { x: pad, y: bottom - round(unit * 1.7), width: round(unit * 0.95), height: round(unit * 1.7) }
   const doorway: Point = { x: round(door.x + door.width + pet.width * 0.32), y: bottom - 4 }
   const frontTop = bottom - round(unit * 1.45)
@@ -305,7 +309,7 @@ export function layoutRoom(width: number, height: number, defs: readonly AreaDef
 
   if (lane && laneDef) {
     const top = LANE_HEADER + round(pet.height * 1.02)
-    const laneRow = round(pet.height + 46)
+    const laneRow = round(pet.height + 46) + meterLine
 
     stations.push({
       ...base(laneDef),

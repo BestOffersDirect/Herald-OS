@@ -3,7 +3,7 @@ import { describeTool } from './areas.ts'
 import { automationOf, type RoomCronJob, type RoomCronRun } from './automations.ts'
 import { helperUsage, type RoomCostRow, sameUsage, sessionUsage, tokensOf, usageOfRow } from './costs.ts'
 import { type DeskPick, deskFor } from './desks.ts'
-import type { RoomElsewhereRow } from './elsewhere.ts'
+import { cronRunJob, type RoomElsewhereRow } from './elsewhere.ts'
 import type { RoomFrame, RoomHelperRecord, RoomRequest, RoomSessionRow } from './frames.ts'
 import { deriveOutside, dropLive, freshEvents, hasLiveDetail, heraldWork, isHeraldWork, keepsLive, outsideAgentId, outsideLane, staleAt, takeActivity } from './outside.ts'
 import { stepOf } from './steps.ts'
@@ -982,8 +982,13 @@ function applyAutomations(work: Work, input: Extract<RoomInput, { type: 'automat
     settle(agent, before, trace, false)
   }
 
+  const jobIds = new Set(input.jobs.map(job => job.id))
+
   for (const [id, agent] of Object.entries(work.agents)) {
-    if (agent.kind === 'automation' && !listed.has(id)) {
+    const run = agent.kind === 'elsewhere' && agent.parentId === null && agent.sessionKey ? cronRunJob(agent.sessionKey) : null
+
+    // A lane read that came first could not know these runs were the board's own.
+    if ((agent.kind === 'automation' && !listed.has(id)) || (run !== null && jobIds.has(run))) {
       delete work.agents[id]
     }
   }

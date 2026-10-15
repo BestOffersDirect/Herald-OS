@@ -139,10 +139,19 @@ function apply(views: Map<string, RoomLogAgent>, entry: RoomLogEntry): void {
   }
 }
 
-/** One day's entries (oldest first, as main reads them back), indexed for seeking. */
-export function replayIndex(entries: readonly RoomLogEntry[]): RoomReplayIndex {
+/**
+ * One day's entries (oldest first, as main reads them back), indexed for seeking. `openUntil`: the
+ * log is still running, so a last stretch nothing has closed lasts until then, not until the last
+ * thing that changed.
+ */
+export function replayIndex(entries: readonly RoomLogEntry[], openUntil?: number): RoomReplayIndex {
   const times = timesOf(entries)
   const stretches = stretchesIn(entries, times)
+  const open = stretches.at(-1)
+
+  if (open && open.closed === null && openUntil !== undefined && openUntil > open.to) {
+    stretches[stretches.length - 1] = { ...open, to: openUntil }
+  }
   const owner = new Int32Array(entries.length).fill(-1)
   const keyframes: Keyframe[] = []
 

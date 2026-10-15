@@ -165,7 +165,8 @@ export function meterOf(agent: Pick<RoomAgent, 'kind' | 'usage'> & Partial<Pick<
   }
 
   const tokens = tokensOf(usage)
-  const parts = [tokens === null ? null : tokensText(tokens), moneyText(usage.costUsd, usage.costStatus)].filter((part): part is string => part !== null)
+  // A session the database has not counted yet says 0: that is no news, not a reading.
+  const parts = [tokens ? tokensText(tokens) : null, moneyText(usage.costUsd, usage.costStatus)].filter((part): part is string => part !== null)
 
   if (!parts.length) {
     return null
@@ -174,7 +175,7 @@ export function meterOf(agent: Pick<RoomAgent, 'kind' | 'usage'> & Partial<Pick<
   const helper = agent.kind === 'helper' || (agent.kind === 'elsewhere' && Boolean(agent.parentId))
   const whose = helper ? WHOSE.helper : WHOSE[agent.kind]
   const title = [
-    tokens === null ? null : `Tokens Hermes counted for ${whose}${usage.turn === null ? '' : ` (this turn: ${compact(usage.turn)})`}.`,
+    !tokens ? null : `Tokens Hermes counted for ${whose}${usage.turn === null ? '' : ` (this turn: ${compact(usage.turn)})`}.`,
     usage.costStatus ? COST_TITLE[usage.costStatus] : null,
     agent.kind === 'helper' ? 'Hermes adds this to the conversation that started the helper.' : null
   ]

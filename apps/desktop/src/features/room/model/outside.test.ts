@@ -64,8 +64,19 @@ describe('live detail from Hermes outside Herald', () => {
     expect(view(state)).toEqual({ phase: 'tool', area: 'terminal', target: 'Hermes-OS', step: 'running a command', tool: 'terminal' })
 
     state = run(state, outside([ev('tool.end', { tool: 'terminal', call: 'c3' }), ev('session.end', { status: 'completed' })]))
-    expect(view(state)).toEqual({ phase: 'thinking', area: 'elsewhere', target: null, step: null, tool: null })
+    expect(view(state)).toEqual({ phase: 'idle', area: 'elsewhere', target: null, step: null, tool: null })
     expect(state.agents['e:tg1']).toMatchObject({ title: 'Support bot', turnStartedAt: null })
+  })
+
+  it('rests in the lane once the plugin says the turn ended, though the session list still counts the session active', () => {
+    const ended = run(bot(), outside([ev('session.start', { at: T0 }), ev('session.end', { status: 'completed', at: T0 + 2_000 })], T0 + 3_000))
+
+    expect(ended.agents['e:tg1'].elsewhere?.active).toBe(true)
+    expect(view(ended)).toMatchObject({ phase: 'idle', area: 'elsewhere', step: null })
+    expect(texts(ended, 'e:tg1', T0 + 2_000 + 3 * MIN)).toEqual(['Telegram · last active 3 minutes ago'])
+    expect(view(run(ended, lane([row({ id: 'tg1', title: 'Support bot', active: true })], T0 + 4_000)))).toMatchObject({ phase: 'idle' })
+    expect(summarizeRoom(ended, T0 + 3_000)).toMatchObject({ elsewhere: 0, lines: [] })
+    expect(summarizeRoom(bot(), T0).elsewhere).toBe(1)
   })
 
   it('brings in helpers with a note, takes their own tool calls, and walks their result back', () => {
@@ -150,6 +161,17 @@ describe('live detail from Hermes outside Herald', () => {
 
     state = run(state, outside([ev('session.start', { session: 'cron_other_20261015_030000', source: 'cron' })]))
     expect(state.agents['e:cron_other_20261015_030000']?.elsewhere?.where).toBe('a scheduled job')
+  })
+
+  it('takes the board’s own runs out of the lane when a lane read came before the automations', () => {
+    const job: RoomCronJob = { key: ':job1', id: 'job1', profile: null, name: 'Morning digest', paused: false, lastRunAt: null, lastOutcome: null, nextRunAt: null, claimed: false }
+    const early = run(EMPTY_ROOM, lane([row({ id: 'cron_job1_20261015_030000', source: 'cron', where: 'a scheduled job' }), row({ id: 'cron_other_20261015_030000', source: 'cron', where: 'a scheduled job' })], T0))
+
+    expect(Object.keys(early.agents).sort()).toEqual(['e:cron_job1_20261015_030000', 'e:cron_other_20261015_030000'])
+
+    const read = run(early, { type: 'automations', jobs: [job], runs: {}, at: T0 + 1_000 })
+
+    expect(Object.keys(read.agents).sort()).toEqual(['a::job1', 'e:cron_other_20261015_030000'])
   })
 
   it('takes each event once, in main’s order, however often a subscribe replays it', () => {

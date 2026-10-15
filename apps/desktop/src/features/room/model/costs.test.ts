@@ -139,6 +139,11 @@ describe('what a meter says', () => {
     expect(meterOf(agent('s:1', 'conversation', { usage: usage({ input: null, output: null }) }))).toBeNull()
     expect(meterOf(agent('s:1', 'conversation'))).toBeNull()
   })
+
+  it('shows nothing for a session the database has not counted yet, and only its money when it has one', () => {
+    expect(meterOf(agent('e:1', 'elsewhere', { usage: usage({ input: 0, output: 0 }) }))).toBeNull()
+    expect(meterOf(agent('e:1', 'elsewhere', { usage: usage({ input: 0, output: 0, costUsd: 0.01, costStatus: 'estimated' }) }))).toEqual({ text: '~$0.01 est.', title: "The cost is Hermes's estimate." })
+  })
 })
 
 describe('the total', () => {

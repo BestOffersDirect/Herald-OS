@@ -116,7 +116,7 @@ export const AgentOverlay = memo(function AgentOverlay({ agent, pet, facts, step
             <span className="truncate">{title}</span>
           </span>
           {meter && (
-            <span className="pointer-events-auto truncate rounded-md bg-black/25 px-1.5 py-px text-[10px] leading-tight text-fg-4 tabular-nums" style={{ maxWidth: widest + 24 }} title={meter.title}>
+            <span className="pointer-events-auto truncate rounded-md bg-bg-elevated/90 px-1.5 py-px text-[10px] leading-tight text-fg-3 tabular-nums" style={{ maxWidth: widest + 24 }} title={meter.title}>
               {meter.text}
             </span>
           )}

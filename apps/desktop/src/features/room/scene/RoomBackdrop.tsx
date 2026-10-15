@@ -166,8 +166,8 @@ function Desk({ station, unit, glowing, still, words, named }: Drawn & { unit: n
 }
 
 /** The lane for work outside Herald: a strip outside the room, which says how much it shows. */
-function Lane({ station, words, live }: Drawn & { live: boolean }) {
-  const { note, about } = laneWords(live)
+function Lane({ station, words, live, text }: Drawn & { live: boolean; text?: { note: string; about: string } }) {
+  const { note, about } = text ?? laneWords(live)
 
   return (
     <div className="absolute border-l border-line bg-black/20" style={box(station.rect)}>
@@ -215,10 +215,12 @@ export interface RoomBackdropProps {
   words?: boolean
   /** The lane shows live steps from Herald's bridge plugin, not only the session list's titles. */
   laneLive?: boolean
+  /** What the lane says at its top, for a scene that is not the live Room. */
+  laneText?: { note: string; about: string }
 }
 
 /** The room drawn once per size: walls, floor, stations, desks and furniture; a station glows while a pet works there. */
-export const RoomBackdrop = memo(function RoomBackdrop({ layout, glowing, still, deskNames, words = true, laneLive = false }: RoomBackdropProps) {
+export const RoomBackdrop = memo(function RoomBackdrop({ layout, glowing, still, deskNames, words = true, laneLive = false, laneText }: RoomBackdropProps) {
   const { unit } = layout
   const lines = Math.max(18, Math.round(unit * 0.62))
   const roomWidth = layout.wall.width
@@ -243,7 +245,7 @@ export const RoomBackdrop = memo(function RoomBackdrop({ layout, glowing, still,
 
         switch (station.wall) {
           case 'lane':
-            return <Lane key={station.id} {...drawn} live={laneLive} />
+            return <Lane key={station.id} {...drawn} live={laneLive} text={laneText} />
           case 'desk':
             return <Desk key={station.id} {...drawn} unit={unit} named={deskNames} />
           case 'front':

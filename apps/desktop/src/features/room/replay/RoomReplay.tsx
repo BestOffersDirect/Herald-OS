@@ -13,7 +13,7 @@ import { $roomPrefs } from '../prefs.ts'
 import { useRoomAssignment } from '../assignment.ts'
 import { REPLAY_MS } from '../scene/choreography.ts'
 import { RoomScene } from '../scene/RoomScene.tsx'
-import { dayBounds, dayClockText, dayKey, dayLabel, gapText, type ReplaySpeed } from './labels.ts'
+import { dayBounds, dayClockText, dayKey, dayLabel, gapText, REPLAY_LANE, type ReplaySpeed } from './labels.ts'
 import { gapAt, handoffsIn, NO_CAST, NO_VIEWS, positionAt, type ReplayCast, replayAgents, replayFacts, replayHandoff, replayIndex, type RoomReplayIndex, sceneStretchAt, stretchAt, viewsAt } from './model.ts'
 import { ReplayControls } from './ReplayControls.tsx'
 
@@ -158,7 +158,9 @@ export function RoomReplay({ onExit, active = true }: { onExit: () => void; acti
           return
         }
 
-        const index = replayIndex(entries)
+        const now = Date.now()
+        // Today's log is still being kept: its last stretch runs until now though nothing changed lately.
+        const index = replayIndex(entries, day === dayKey(now) && $roomPrefs.get().log ? now : undefined)
         const bounds = dayBounds(day)
         setLog({ status: 'ready', value: { day, index, bounds } })
         moveTo(Math.min(bounds.end, Math.max(bounds.start, index.stretches[0]?.from ?? bounds.start)))
@@ -313,6 +315,7 @@ export function RoomReplay({ onExit, active = true }: { onExit: () => void; acti
           facts={facts}
           deskNames={false}
           lane={stretch >= 0 && log.value.index.stretches[stretch].elsewhere}
+          laneText={REPLAY_LANE}
           names
           interactive={false}
           chrome={false}

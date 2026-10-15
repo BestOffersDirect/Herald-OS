@@ -57,7 +57,8 @@ function lineOf(agent: RoomAgent, state: RoomState, now: number): string {
 export function summarizeRoom(state: RoomState, now: number): RoomSummary {
   const present = Object.values(state.agents).filter(agent => agent.phase !== 'finished')
   const counted = present.filter(agent => agent.kind !== 'elsewhere' && !(agent.kind === 'automation' && agent.phase === 'idle'))
-  const away = present.filter(agent => agent.kind === 'elsewhere' && (agent.elsewhere?.active || busyOutside(agent)))
+  // With live detail, the plugin's word on whether a turn runs is newer than the session list's.
+  const away = present.filter(agent => agent.kind === 'elsewhere' && (busyOutside(agent) || ((agent.elsewhere?.liveAt ?? null) === null && agent.elsewhere?.active)))
   const agents = [...counted, ...away].sort(
     (a, b) => Number(a.kind === 'elsewhere') - Number(b.kind === 'elsewhere') || ORDER[a.phase] - ORDER[b.phase] || (a.startedAt ?? a.lastEventAt) - (b.startedAt ?? b.lastEventAt) || a.id.localeCompare(b.id)
   )

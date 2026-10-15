@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ROOM_AREAS, type RoomAgent } from '../model/types.ts'
-import { AREA_DEFS, type AreaDef, assignSlots, BUBBLE_HEIGHT, BUBBLE_RISE, depthOrder, laneCapacity, layoutRoom, MAX_PETS, pickShown, type Rect, type SceneLayout, slotPoint, stationOf, tagWidth, wallOf } from './layout.ts'
+import { AREA_DEFS, type AreaDef, assignSlots, BUBBLE_HEIGHT, BUBBLE_RISE, depthOrder, laneCapacity, layoutRoom, MAX_PETS, METER_LINE, pickShown, type Rect, type SceneLayout, slotPoint, stationOf, tagWidth, wallOf } from './layout.ts'
 
 function agent(id: string, patch: Partial<RoomAgent> = {}): RoomAgent {
   return {
@@ -347,6 +347,17 @@ describe('desks, the lane and the Automations board', () => {
     expect(laneCapacity(on)).toBeGreaterThan(0)
     expect(points.every(point => point.x > on.wall.width && point.x < on.width)).toBe(true)
     expect(points[1].y).toBeGreaterThan(points[0].y)
+  })
+
+  it('leaves a line more under the front row and between the lane’s rows while cost meters show', () => {
+    const plain = layoutRoom(1100, 620, AREA_DEFS, { lane: true })
+    const metered = layoutRoom(1100, 620, AREA_DEFS, { lane: true, meters: true })
+
+    for (const id of ['bench', 'lounge', 'automations'] as const) {
+      expect(stationOf(plain, id).rect.y - stationOf(metered, id).rect.y, id).toBe(METER_LINE)
+    }
+
+    expect(slotPoint(metered, 'elsewhere', 1).y - slotPoint(metered, 'elsewhere', 0).y).toBe(slotPoint(plain, 'elsewhere', 1).y - slotPoint(plain, 'elsewhere', 0).y + METER_LINE)
   })
 
   it('stands automations at the left end of their board, clear of its face', () => {

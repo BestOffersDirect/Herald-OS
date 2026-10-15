@@ -239,6 +239,9 @@ export function deriveOutside(agent: RoomAgent, basis: RoomBasis): void {
     place(agent, 'tool', basis.toolArea ?? basis.turnArea ?? home, basis.toolTarget, basis.toolStep)
   } else if (working) {
     place(agent, 'thinking', basis.turnArea ?? home, basis.turnTarget, 'thinking')
+  } else if (live && basis.status === 'idle') {
+    // The plugin said the turn ended, which is newer than the session list's idea of whether it is active.
+    place(agent, 'idle', 'elsewhere', null, null)
   } else {
     place(agent, lane?.active ? 'thinking' : 'idle', 'elsewhere', null, null)
   }

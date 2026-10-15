@@ -63,6 +63,17 @@ describe('stretches and gaps', () => {
     expect(stretchesOf([view(at(9, 0), 'a'), end(at(10, 0))])).toEqual([])
   })
 
+  it('runs the stretch the log is still writing until now, though nothing changed lately, and only that one', () => {
+    const open = replayIndex([begin(at(9, 0)), view(at(9, 0), 'a'), view(at(9, 30), 'a', { phase: 'idle' })], at(11, 0))
+    const closed = replayIndex([begin(at(9, 0)), view(at(9, 0), 'a'), end(at(9, 40))], at(11, 0))
+    const earlier = replayIndex([begin(at(9, 0)), view(at(9, 0), 'a'), begin(at(10, 0)), view(at(10, 0), 'a')], at(11, 0))
+
+    expect(open.stretches.map(stretch => stretch.to)).toEqual([at(11, 0)])
+    expect(gapAt(open, at(10, 30))).toBeNull()
+    expect(closed.stretches.map(stretch => stretch.to)).toEqual([at(9, 40)])
+    expect(earlier.stretches.map(stretch => stretch.to)).toEqual([at(9, 0), at(11, 0)])
+  })
+
   it('says plainly when nothing was logged', () => {
     const index = replayIndex(DAY)
     const said = (t: number) => {

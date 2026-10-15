@@ -274,7 +274,7 @@ export function RoomSection() {
         <SettingsRow
           icon={<IconSum />}
           label="Show the total"
-          description="The Room's header adds up the tokens and cost Hermes counted for the work in the room, marked as an estimate when any part of it is one. Helpers are not added twice: Hermes counts them in the conversation that started them."
+          description="The Room's header adds up the tokens and cost Hermes counted for the work in the room, marked as an estimate when any part of it is one. Helpers keep their own meters and are left out of it, as Hermes adds a helper's cost to the conversation that started it."
           keywords="pet room cost costs total sum meters tokens money header"
         >
           <Toggle checked={prefs.costTotal} onChange={next => save({ costTotal: next })} label="Show the total" />

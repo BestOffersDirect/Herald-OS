@@ -44,6 +44,8 @@ export interface RoomSceneProps {
   lane?: boolean
   /** The lane shows live steps, which the person turned on as well. */
   laneLive?: boolean
+  /** What the lane says at its top and while it is empty, for a scene that is not the live Room. */
+  laneText?: { note: string; about: string; empty: string }
   /** Name tags, facts, Hermes's result summaries and the words on the furniture; off for a screensaver. */
   names?: boolean
   /** Pets open their conversations and signs open the approval card; off for a screensaver, which only ever shows. */
@@ -164,6 +166,7 @@ export function RoomScene({
   deskNames = true,
   lane = false,
   laneLive = false,
+  laneText,
   names = true,
   interactive = true,
   chrome = true,
@@ -194,7 +197,8 @@ export function RoomScene({
   const [sign, setSign] = useState<{ id: string; requestId: string; placement: PopoverPlacement } | null>(null)
   const size = useSceneSize(floorRef)
   const deskInputs = useMemo<DeskInput[]>(() => desks.map(({ id, area, name }) => ({ id, area, name })), [desks])
-  const layout = useMemo(() => (size ? layoutRoom(size.width, size.height, AREA_DEFS, { desks: deskInputs, lane }) : null), [size?.width, size?.height, deskInputs, lane])
+  const metered = meters && names
+  const layout = useMemo(() => (size ? layoutRoom(size.width, size.height, AREA_DEFS, { desks: deskInputs, lane, meters: metered }) : null), [size?.width, size?.height, deskInputs, lane, metered])
   const capacity = layout ? laneCapacity(layout) : 0
   const { shown, more, laneMore } = useMemo(() => {
     const room = pickShown(
@@ -212,7 +216,8 @@ export function RoomScene({
   const raised = interactive && sign ? (visible.find(agent => agent.id === sign.id && agent.approval?.requestId === sign.requestId) ?? null) : null
   const raisedId = raised?.id ?? null
   const inRoom = agents.some(agent => !inLane(agent) && !(agent.kind === 'automation' && agent.phase === 'idle'))
-  const laneEmpty = lane && !agents.some(inLane)
+  // Live work outside Herald may stand at a station or the bench: the lane is only empty when there is none at all.
+  const laneEmpty = lane && !agents.some(agent => agent.kind === 'elsewhere')
 
   useEffect(() => {
     agentsRef.current = agents
@@ -370,7 +375,7 @@ export function RoomScene({
     <div className={cn('relative flex h-full w-full flex-col overflow-hidden text-fg', className)}>
       {chrome && <RoomHeader summary={summary} notices={notices} total={total} onPetSettings={onPetSettings} onTimeLapse={onTimeLapse} />}
       <div ref={floorRef} className="relative min-h-0 flex-1 overflow-hidden">
-        {layout && <RoomBackdrop layout={layout} glowing={glowing} still={still} deskNames={deskNames && names} words={names} laneLive={laneLive} />}
+        {layout && <RoomBackdrop layout={layout} glowing={glowing} still={still} deskNames={deskNames && names} words={names} laneLive={laneLive} laneText={laneText} />}
         <canvas ref={canvasRef} aria-hidden="true" className="pointer-events-none absolute top-0 left-0" style={layout ? { width: layout.width, height: layout.height } : undefined} />
         {layout && (
           <div className="pointer-events-none absolute inset-0">
@@ -420,7 +425,7 @@ export function RoomScene({
         )}
         {layout?.lane && names && (laneEmpty || laneMore > 0) && (
           <div className="pointer-events-none absolute flex justify-center px-2" style={{ left: layout.lane.x, width: layout.lane.width, ...(laneEmpty ? { top: layout.lane.y + 64 } : { bottom: 8 }) }}>
-            {laneEmpty ? <span className="text-center text-[10.5px] leading-snug text-fg-4">{EMPTY_LANE_TEXT}</span> : <Pill tone="muted">{moreText(laneMore)}</Pill>}
+            {laneEmpty ? <span className="text-center text-[10.5px] leading-snug text-fg-4">{laneText?.empty ?? EMPTY_LANE_TEXT}</span> : <Pill tone="muted">{moreText(laneMore)}</Pill>}
           </div>
         )}
         {names && more > 0 && (

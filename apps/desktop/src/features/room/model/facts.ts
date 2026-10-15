@@ -94,7 +94,9 @@ function outsideFacts(agent: RoomAgent, state: RoomState, now: number): RoomFact
   if (agent.phase === 'finished') {
     facts.push({ kind: 'result', text: agent.result ? RESULT_TEXT[agent.result.status] : 'finished', trace: agent.trace.result ?? agent.trace.phase ?? null })
   } else if (lane) {
-    facts.push({ kind: 'activity', text: activityText(lane, state.elsewhereAt ?? now), trace: agent.trace.elsewhere ?? null })
+    // Live detail says whether a turn runs now; without it, the label is as of the lane's last read.
+    const text = lane.liveAt === null ? activityText(lane, state.elsewhereAt ?? now) : busyOutside(agent) ? `${lane.where} · active now` : activityText({ ...lane, active: false }, now)
+    facts.push({ kind: 'activity', text, trace: agent.trace.elsewhere ?? null })
   }
 
   if (busyOutside(agent) && TURN_PHASES.has(agent.phase) && now - agent.lastEventAt >= QUIET_AFTER_MS) {

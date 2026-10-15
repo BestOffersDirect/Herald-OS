@@ -333,4 +333,17 @@ describe('RoomScene', () => {
     expect(host.textContent).toContain('Live steps from Hermes in each app')
     expect(host.textContent).not.toContain('Coarse')
   })
+
+  it('calls the lane empty only when no work outside Herald is anywhere in the room, and takes its words from a replay', () => {
+    const atWork = agent('e:bot', { kind: 'elsewhere', phase: 'tool', area: 'terminal', step: 'running a command', sessionId: '', elsewhere: { where: 'Telegram', active: true, lastActiveAt: 1, approval: false, liveAt: 1 } })
+    render({ agents: [atWork], lane: true, laneLive: true })
+
+    expect(host.textContent).not.toContain('No Hermes work outside Herald')
+
+    render({ agents: [], lane: true, laneText: { note: 'As the Room showed it then', about: 'From the log.', empty: 'No Hermes work outside Herald at this time.' } })
+
+    expect(host.textContent).toContain('As the Room showed it then')
+    expect(host.textContent).toContain('No Hermes work outside Herald at this time.')
+    expect(host.textContent).not.toContain('in the last hour')
+  })
 })
