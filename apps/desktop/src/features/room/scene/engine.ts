@@ -66,7 +66,7 @@ export interface RoomEngine {
   setInput(input: SceneInput): void
   /** Ticks run only while running (the window is shown). */
   setRunning(running: boolean): void
-  /** Something it draws changed outside its input (a sheet finished loading). */
+  /** Something it draws changed outside its input (a sheet finished loading, the canvas was resized): paint again. */
   wake(): void
   dispose(): void
 }
@@ -107,6 +107,13 @@ function sameMarks(a: Readonly<Record<string, PetMarks>>, b: Readonly<Record<str
 
 const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean => a.size === b.size && [...a].every(id => b.has(id))
 
+/** What a paint shows, in the whole pixels the overlays are placed at: a tick that would draw the same again draws nothing. */
+export function paintKey(frames: readonly PetFrame[], at: Pick<SceneLayout, 'width' | 'height'>): string {
+  const cells = frames.map(frame => [frame.id, Math.round(frame.x), Math.round(frame.y), frame.opacity.toFixed(3), frame.cell ? `${frame.cell.row}.${frame.cell.frame}.${frame.cell.mirror ? 1 : 0}` : '-', frame.tint ?? '-', frame.sheet?.key ?? '-', frame.leaving ? 1 : 0].join(':'))
+
+  return `${at.width}x${at.height}|${cells.join('|')}`
+}
+
 export function createRoomEngine(hooks: SceneHooks): RoomEngine {
   let layout: SceneLayout | null = null
   let input: SceneInput | null = null
@@ -119,6 +126,7 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
   let stoppedAt: number | null = null
   let resettle = false
   let dirty = true
+  let painted = ''
   let snap = false
   let slots: Record<string, SlotRef> = {}
   let plans: HandoffPlan[] = []
@@ -288,7 +296,7 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
       y: pet.body.y,
       opacity: pet.body.opacity,
       pose: pet.pose,
-      cell: sheet ? cellAt(pet.pose, sheet.sheet.layout, pet.since, now, motion === 'still') : null,
+      cell: sheet ? cellAt(pet.pose, sheet.sheet.layout, pet.since, now, motion === 'still', Math.min(now, pet.agent.lastEventAt)) : null,
       sheet,
       tint: pet.look?.tint ?? null,
       leaving
@@ -409,7 +417,14 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
     }
 
     holdSheets()
-    hooks.paint(depthOrder(frames), layout)
+    const ordered = depthOrder(frames)
+    const drawn = paintKey(ordered, layout)
+
+    if (drawn !== painted) {
+      painted = drawn
+      hooks.paint(ordered, layout)
+    }
+
     const at = nextWake(now, moving, frames.map(frame => frame.cell ?? NO_CELL), extra)
     lastTick = moving ? now : null
 
@@ -434,6 +449,7 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
 
       layout = next
       dirty = true
+      painted = ''
       wake()
     },
     setInput(next) {
@@ -466,7 +482,10 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
         hooks.clock.cancel(hooks.key)
       }
     },
-    wake,
+    wake() {
+      painted = ''
+      wake()
+    },
     dispose() {
       disposed = true
       running = false

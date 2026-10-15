@@ -1,4 +1,4 @@
-import { frameAt, type PetPose, poseRow, type SheetLayout } from '../../pet/sprite.ts'
+import { FRAME_MS, frameAt, type PetPose, poseRow, type SheetLayout } from '../../pet/sprite.ts'
 import type { RoomAgent } from '../model/types.ts'
 
 /** The pose for what an agent is doing; walking wins over everything. */
@@ -26,6 +26,11 @@ export function poseOf(agent: Pick<RoomAgent, 'phase' | 'result'>, walking: -1 |
 /** Poses that play a couple of loops and then hold: resting, and a finished helper's cheer or droop. */
 const SETTLES: ReadonlySet<PetPose> = new Set<PetPose>(['idle', 'jump', 'failed'])
 
+/** A working pose plays this many loops after its last news and then holds, so a pet with nothing new stops moving. */
+export const WORK_LOOPS = 4
+
+const isWalk = (pose: PetPose): boolean => pose === 'walk-left' || pose === 'walk-right'
+
 export interface Cell {
   row: number
   frame: number
@@ -34,18 +39,22 @@ export interface Cell {
   nextAt: number | null
 }
 
-/** The frame a pet in `pose` since `since` shows at `now`; `still` holds every pose on one frame. */
-export function cellAt(pose: PetPose, layout: SheetLayout, since: number, now: number, still: boolean): Cell {
+/**
+ * The frame a pet in `pose` since `since` shows at `now`; `still` holds every pose on one frame, and a
+ * working pose holds once `news` (the agent's latest frame or record) is WORK_LOOPS loops old.
+ */
+export function cellAt(pose: PetPose, layout: SheetLayout, since: number, now: number, still: boolean, news = since): Cell {
   const { row, frames, mirror } = poseRow(pose, layout)
-  const step = frameAt(SETTLES.has(pose) ? 'idle' : pose, frames, now - since, still)
+  const held = !SETTLES.has(pose) && !isWalk(pose) && now - Math.max(since, news) >= WORK_LOOPS * frames * FRAME_MS
+  const step = held ? { frame: 0, nextMs: null } : frameAt(SETTLES.has(pose) ? 'idle' : pose, frames, now - since, still)
   // A held pose other than idle shows its middle frame: a row's first frame is often the plain standing one.
   const frame = step.nextMs === null && pose !== 'idle' ? Math.floor(frames / 2) : step.frame
 
   return { row, frame, mirror, nextAt: step.nextMs === null ? null : now + step.nextMs }
 }
 
-/** About one display frame, for ticks while something walks or fades. */
-export const MOVING_TICK_MS = 16
+/** Ticks while something walks or fades: about 30 a second. */
+export const MOVING_TICK_MS = 33
 
 /**
  * When the scene needs its next tick: a frame from now while anything walks or fades, else the

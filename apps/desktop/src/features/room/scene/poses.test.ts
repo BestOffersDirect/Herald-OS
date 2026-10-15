@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { PET_FRAME_HEIGHT, PET_FRAME_WIDTH } from '../../../../shared/pet.ts'
 import { FRAME_MS, IDLE_LOOPS, layoutFromBlanks, type SheetLayout, WALK_FRAME_MS } from '../../pet/sprite.ts'
 import type { RoomPhase, RoomResult } from '../model/types.ts'
-import { cellAt, MOVING_TICK_MS, nextWake, poseOf } from './poses.ts'
+import { cellAt, MOVING_TICK_MS, nextWake, poseOf, WORK_LOOPS } from './poses.ts'
 
 /** A sheet whose row `n` has `counts[n]` frames before its first blank cell. */
 const sheet = (columns: number, counts: number[]): SheetLayout => layoutFromBlanks(columns * PET_FRAME_WIDTH, counts.length * PET_FRAME_HEIGHT, (column, row) => column >= counts[row])
@@ -80,6 +80,17 @@ describe('cellAt', () => {
     expect(run.nextAt).toBeNull()
     expect(run.frame).toBe(Math.floor(Math.min(6, codex.frames[codex.rowNames.indexOf('running')]) / 2))
     expect(cellAt('idle', codex, 0, 5000, true)).toMatchObject({ frame: 0, nextAt: null })
+  })
+
+  it('holds a working pose once its latest news is a few loops old, and plays again on news', () => {
+    const frames = Math.min(6, codex.frames[codex.rowNames.indexOf('running')])
+    const loops = WORK_LOOPS * frames * FRAME_MS
+
+    expect(cellAt('run', codex, 0, loops - 1, false, 0).nextAt).not.toBeNull()
+    expect(cellAt('run', codex, 0, loops, false, 0)).toMatchObject({ frame: Math.floor(frames / 2), nextAt: null })
+    expect(cellAt('run', codex, 0, loops + 500, false, loops + 400).nextAt).not.toBeNull()
+    expect(cellAt('run', codex, 0, loops + FRAME_MS * 2 + 10, false, loops + FRAME_MS * 2).frame).toBe(cellAt('run', codex, 0, loops + FRAME_MS * 2 + 10, false, loops + FRAME_MS * 2 + 10).frame)
+    expect(cellAt('walk-right', codex, 0, loops * 3, false, 0).nextAt).not.toBeNull()
   })
 })
 

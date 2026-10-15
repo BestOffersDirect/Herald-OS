@@ -111,6 +111,25 @@ const GUARDRAIL = /Tool guardrail halted ([A-Za-z0-9_.:-]{1,64}): ([a-z_]+)/
 const TITLE_MAX = 80
 const SUMMARY_MAX = 160
 
+/** A helper's summary as its first plain sentence: no code, tables, headings, list marks, emphasis or link targets. */
+export function summaryLine(value: string): string | null {
+  const prose = value
+    .replace(/```[\s\S]*?(```|$)/g, ' ')
+    .split('\n')
+    .filter(line => !/^\s*(\||[-=*_]{3,}\s*$)/.test(line))
+    .map(line => line.replace(/^\s*(#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)/, ''))
+    .join(' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/(\*\*|__|~~)(.+?)\1/g, '$2')
+    .replace(/(^|\s)[*_](\S(?:.*?\S)?)[*_](?=\s|[.,;:!?]|$)/g, '$1$2')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const sentence = /^(.+?[.!?])(\s|$)/.exec(prose)?.[1] ?? prose
+
+  return shortName(sentence, SUMMARY_MAX)
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }
@@ -208,7 +227,7 @@ function helperFacts(sessionId: string, payload: Record<string, unknown>, stage:
     toolName: stage === 'tool' ? toolName(payload.tool_name) : null,
     toolCount: count(payload.tool_count),
     status: complete && status && HELPER_STATUSES.has(status) ? (status as RoomResult['status']) : null,
-    summary: complete && typeof payload.summary === 'string' ? shortName(payload.summary, SUMMARY_MAX) : null,
+    summary: complete && typeof payload.summary === 'string' ? summaryLine(payload.summary) : null,
     durationSeconds: complete ? count(payload.duration_seconds) : null,
     filesRead: complete && Array.isArray(payload.files_read) ? payload.files_read.length : null,
     filesWritten: complete && Array.isArray(payload.files_written) ? payload.files_written.length : null

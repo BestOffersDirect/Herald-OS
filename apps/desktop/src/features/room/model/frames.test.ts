@@ -1,6 +1,6 @@
 import type { ActiveSubagent, SessionActiveItem } from '@herald-os/client'
 import { describe, expect, it } from 'vitest'
-import { callSignature, guardrailOf, roomFrame, roomHelperRecord, roomRequest, roomSessionMeta, roomSessionRow } from './frames.ts'
+import { callSignature, guardrailOf, roomFrame, roomHelperRecord, roomRequest, roomSessionMeta, roomSessionRow, summaryLine } from './frames.ts'
 import { EMPTY_ROOM, reduceRoom, type RoomInput } from './reducer.ts'
 import { factsOf } from './facts.ts'
 import { summarizeRoom } from './summary.ts'
@@ -92,6 +92,13 @@ describe('frames are cut down on arrival', () => {
     const frame = roomFrame(raw('subagent.complete', 1, { subagent_id: 'a', goal: 'g', task_count: 1, task_index: 0, status: 'completed', summary: 'x'.repeat(500) }))
 
     expect(frame?.type === 'subagent' && frame.helper.summary?.length).toBe(160)
+  })
+
+  it('keeps a helper summary to its first plain sentence', () => {
+    expect(summaryLine('The file `/tmp/a/Budget.csv` contains:\n| Item | Amount |\n|------|------|\n| rent | 1200 |\nTotal 1200.')).toBe('The file /tmp/a/Budget.csv contains: Total 1200.')
+    expect(summaryLine('A **petdex pet** is an _animated_ mascot. It walks around.')).toBe('A petdex pet is an animated mascot.')
+    expect(summaryLine('## Result\n- Found [three hotels](https://example.com/x?token=1) near the station\n```\nrm -rf x\n```')).toBe('Result Found three hotels near the station')
+    expect(summaryLine('```\nonly code\n```')).toBeNull()
   })
 
   it('needs a session id to place a frame', () => {

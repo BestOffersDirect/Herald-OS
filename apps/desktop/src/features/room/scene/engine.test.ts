@@ -121,6 +121,23 @@ function setup({ motion = 'full', loaded = true, running = true }: { motion?: Ro
 }
 
 describe('the room engine', () => {
+  it('paints nothing when a tick would draw the same again, and paints again when woken', () => {
+    const scene = setup({ motion: 'still' })
+    scene.feed([agent('a', { phase: 'idle', area: 'lounge' })])
+    scene.time.advance(1000)
+    const painted = scene.frames.length
+
+    scene.feed([agent('a', { phase: 'idle', area: 'lounge', lastEventAt: 5 })])
+    scene.time.advance(1000)
+
+    expect(scene.frames).toHaveLength(painted)
+
+    scene.engine.wake()
+    scene.time.advance(1)
+
+    expect(scene.frames).toHaveLength(painted + 1)
+  })
+
   it('does nothing until it runs, and stops ticking when it stops', () => {
     const scene = setup({ running: false })
     scene.feed([agent('a')])
@@ -219,6 +236,11 @@ describe('the room engine', () => {
     scene.time.advance(30_000)
 
     expect(scene.pet('b')).toMatchObject({ ...slotPoint(scene.layout, 'canvas', 0), pose: 'run' })
+    expect(scene.time.pending()).toBeNull()
+
+    scene.feed([agent('a'), agent('b', { phase: 'tool', area: 'canvas', startedAt: 2, lastEventAt: scene.time.now() })])
+    scene.time.advance(1)
+
     expect(scene.time.pending()!.at - scene.time.ran()).toBeGreaterThan(MOVING_TICK_MS)
 
     scene.feed([agent('a'), agent('b', { phase: 'idle', area: 'lounge', startedAt: 2 })])

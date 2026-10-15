@@ -58,7 +58,7 @@ export interface PetBox {
 }
 
 /** Side by side, pets stand this many pet widths apart: a name tag is never wider, so neighbours' tags never meet. */
-export const TAG_SPAN = 1.6
+export const TAG_SPAN = 1.75
 
 /** The widest a name tag or fact under a pet may be. */
 export const tagWidth = (pet: PetBox): number => Math.round(pet.width * TAG_SPAN) - 8
