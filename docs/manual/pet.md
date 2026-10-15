@@ -47,7 +47,8 @@ Hover over the pet to see what Hermes is doing, and click it for its chat bubble
 current step at the top ("Running a command", "Reading the document"). A small number at its top
 right counts the Hermes work running in the background: other conversations that are working (not
 the one in the Hermes window, and not the pet's own) and automations that are running. The
-automations are an estimate, checked every two minutes from their latest runs.
+automations are an estimate, checked every two minutes from their latest runs. The
+[Pet Room](room.md) shows each piece of Hermes work as a pet of its own.
 
 When nothing is happening the pet rests on one frame and costs no measurable processor time, and
 nothing runs while it is hidden. With Reduce motion on (Herald's setting or the system's) it shows

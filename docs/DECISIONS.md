@@ -1054,3 +1054,139 @@ The macOS release ships `HeraldOS-<version>-mac-arm64` and `-mac-x64` DMGs and z
   `mac.x64ArchFiles`. The arm64 file names stay as they were, so existing links keep working.
 - **Untested on Intel hardware.** The release workflow checks what the Intel app is built for, but
   no CI job ever runs it on an Intel Mac; the README says so until someone tries it on one.
+
+## ADR-026: The Pet Room shows each live piece of Hermes work as a petdex pet
+
+**Status: Proposed** until the Room's third phase lands.
+
+The desktop pet (ADR-022) is one face for all of Hermes. The Pet Room is a window where every live
+piece of Hermes work in Herald's own backend stands as a pet of its own: each conversation, each
+mission and each helper agent a conversation spawned. Pets walk to an area for the tool they are
+using, a bubble says the step each one is on, a parent walks a note to a helper it spawned and the
+helper brings the result back, a pet raises a sign when it needs an approval, and idle or stuck
+agents show what is true about them. The first phase is the store, the shared pet pieces, the
+scene, the window in both shell modes, its commands and Settings > Pet Room. Automations, an
+"elsewhere" lane, desks, meetings, a screensaver, observer hooks, an activity log, a time-lapse and
+cost meters come later and slot into what is here.
+
+- **Only what Hermes reports.** The Room's store (`src/features/room`) is event-sourced: one record
+  per agent (kind, title, parent, phase, area, target, step, last event, approval), folded by pure
+  reducers from frames and records, and every field keeps a trace of what set it (the frame's type
+  and seq, or the method, and when the Room received it). Frames are cut down as they arrive: no
+  message or reply text, thinking, tool arguments, previews or results survive, only a tool's name,
+  an area and a target that is a name (a file's last path segment, a document's name, a web host
+  without its credentials, path and query, an app's name from Hermes's tool labels; the target keys
+  are Hermes's own `delegate_tool_results._TOOL_INPUT_TARGET_KEYS`). Steps and facts come from fixed
+  tables ("reading Budget.xlsx", "running a command", "waiting for your OK"); a terminal step never
+  shows its command. The one free text is a finished helper's result: the first sentence of Hermes's
+  summary, with code, tables and Markdown taken out.
+- **Read-only calls that attach to nothing.** `session.active_list` lists the live sessions and their
+  status (`waiting` while a request is open); `session.events.since` reads any session's event ring
+  without attaching; `delegation.status` lists the running helpers (`owner_agent_session_id` is the
+  parent's `session_key`); `config.get {key: focus}` reports `display.tool_progress`. Frames this
+  window already gets as an attached client are deduplicated against polled ones by seq, with one
+  watermark per session and backend epoch. The Room never calls `session.activate` (it would make
+  the window a viewer that receives approvals and would touch `last_active`), `approval.pending`
+  (it can start an agent build for a lazily resumed session), the `session.usage` RPC (it fetches
+  account usage over the network), `session.resume`, the `subagent.*` controls or `pet.*`. A
+  method-not-found turns off only its part of the Room, and the header says so.
+- **Reads that do not raise other windows' requests.** Hermes answers `session.events.since` with
+  the requests still open on the session, and the gateway client hands those to the calling
+  window's request handlers as if they had just arrived. A guard bound ahead of
+  `bindServerRequests` drops the ones the Room's own reads bring back for sessions another window
+  holds, so their cards neither show in the Room's window nor get declined there; the Room leaves
+  alone a session this window holds while one of its requests is pending, so a read cannot bring
+  back a card the person just answered.
+- **Polling that follows the work.** About once a second for each session that works or waits and
+  every 10 s for idle ones; the session list every 3 s while anything works and every 15 s when the
+  room is quiet, and soon after `sessions.changed`; the helper list every 2 s while helpers run;
+  `display.tool_progress` every minute. A session whose frames reach this window live is skipped for
+  a round. A first read asks for the latest seq with a probe that returns no frames and then takes
+  only the last 200 frames, so it never pulls a ring's megabytes. Nothing polls while the Room is
+  closed, minimized or hidden.
+- **Kinds, and the person's own pets.** A helper is a kind of its own; a session that keeps a todo
+  list is a mission (Herald's missions start with one); the rest are conversations; automations
+  arrive in phase 2. Each kind shows the installed pet the person picked in Settings > Pet Room, or
+  one the Room picks so kinds differ; agents that share a sprite wear colour tints that stay theirs
+  while they are in the room. The Room never installs a pet and never calls `pet.select`, which
+  would change the pet every Hermes surface shows.
+- **One scene, one clock, a capped cache.** The desktop pet's pure parts (sheet layout and poses,
+  sheet decoding, activity and step rules) moved to `src/features/petdex`, which the desktop pet and
+  the Room share, together with a renderer-wide sprite cache keyed by slug and revision that holds
+  at most four decoded sheets (each about 11 MB of pixels) and one animation clock that wakes once
+  for the earliest frame any pet needs and not at all when every pet rests. The Room draws every pet
+  on one canvas over a static DOM floor plan, with name tags, bubbles and signs in DOM placed by the
+  same tick; walks and fades tick about 30 times a second; a working pose plays a few loops after
+  each piece of news and then holds, so a pet with nothing new stops moving; and a tick that would
+  draw the same picture draws nothing. The desktop pet draws exactly as before.
+- **Approvals on Herald's own card, answered only by a click.** Only plain approvals reach a pet;
+  clarify, sudo and secret requests put the pet on the bench with a fact and stay in Hermes. The
+  sign opens the request host's approval card, with the choices it offers and no focus taken. The
+  window that holds the request answers through the desktop pet's `answerApproval`; any other
+  window sends `approval.respond {session_id, request_id, choice}`, which withdraws the card in every
+  window and keeps once, session, always and deny as they are.
+- **Facts, not verdicts.** "idle for 12 minutes", "quiet for 4 minutes during a turn" (no frame for
+  a minute while a turn runs), "same call 3 times" (identical consecutive tool calls, compared by a
+  hash of the arguments taken on arrival), a guardrail halt from Hermes's status line mapped through
+  a table of its codes, and how a helper ended (done, could not finish, ran out of time, was
+  stopped). `store/agents.ts` no longer reports timed-out and interrupted helpers as complete, and
+  prunes finished ones.
+- **A window in both modes.** On the Mac it is a floating app opened from the Dock, the launcher, the
+  Missions page and Settings; on Herald OS Linux it is a `window:room` surface, "Herald OS · Pet
+  Room", with its own gateway client and a niri rule that tiles it at a third of the screen.
+  `room.open` and `room.status` are commands like any other ("show the pet room").
+- **Room for the later phases.** The store's reducer takes an open union of inputs, so automations,
+  an "elsewhere" lane for Hermes work in other processes (messaging bots, the CLI and TUI, Hermes's
+  own desktop app, cron run by the messaging gateway, all out of scope for now) and observer hooks
+  are new inputs, and the traces are what an activity log and a time-lapse replay. The scene takes
+  its state as props, so a screensaver or a time-lapse can drive it, and its areas, slots and lanes
+  are a table, so new areas, desks and meetings are entries. Helpers' `subagent.complete` frames
+  already carry the token and call counts a cost meter needs.
+
+Phase 0 findings (the installed Hermes, a git checkout from 2026-09-25, and the pinned upstream
+v0.21.5 have the same methods and shapes; measured in the dev app on an Apple Silicon Mac):
+
+- `session.active_list` answered in about 1 ms; its rows also carry `preview`, the last message's
+  text, which the Room never reads. `session.events.since` answered in 0.8 ms on average and 3.4 ms
+  at most, and an unknown session id gives an empty answer, not an error. A two-tool turn polled
+  every second moved 40 KB in 27 polls; after five turns a session's ring held 284 events and
+  242 KB. Frames carry no time, so the Room stamps them on arrival; `session.info` arrived only when
+  a session opened and after each turn, so turns are read from `message.start` and
+  `message.complete`.
+- In this Hermes `delegate_task` dispatches helpers in the background: the tool returned in 0.05 s
+  and the parent's turn ended while its two helpers worked. They reported `subagent.start`,
+  `subagent.tool`, `subagent.progress` and `subagent.complete` (summaries of 249 and 424
+  characters, 5.8 s and 24.3 s) on the parent's session, and after the last one a new parent turn
+  delivered the results. `delegation.status` answered in under 1 ms.
+- With approvals set to manual for the test (the config was restored byte for byte), the session
+  listed as `waiting`, `open_requests` held the approval with the same id as the Hermes window's
+  card, and `approval.respond` resolved it in 0.6 ms: the card went away in the Hermes window and
+  the command ran. In smart mode Hermes's judge ran the same harmless command without asking.
+- `display.tool_progress` was unset, so `all`. Switched off for the test, a turn sent no
+  `tool.start` or `tool.complete` at all, and `config.get {key: focus}` reported `off`; the Room says
+  so instead of guessing.
+- A method the backend does not have rejects with code -32601.
+- Polling five calls a second (four sessions at once a second, the session list and the helper list)
+  for a minute took the backend from 3.63% to 3.85% of a core and the renderer from 0.82% to 0.87%.
+  With the Room built, an open room with two resting pets cost about 0.4% of a core across all of
+  Herald's processes; with a conversation in a long command and its pet holding still, about 1.8%,
+  nearly all of it compositing on a 3440-pixel display.
+- Hermes also has "hosted rooms", group chats titled "Group: …"; the Pet Room is unrelated, and its
+  name keeps them apart.
+
+Alternatives considered:
+
+- **Rejected: attaching the Room to sessions** (`session.activate`, `session.resume`) to receive
+  their frames and requests. It changes which window holds the session's approvals and touches
+  what Hermes and other surfaces see.
+- **Rejected: reading tool results for Hermes's guardrail notes.** They are in the model's view of
+  the result, next to file content; the Room counts identical calls itself.
+- **Rejected: a canvas or a timer per pet**, as the desktop pet had: the cost grows with every
+  agent, and many timers drift apart.
+
+**Known limits.** Times are when the Room received a frame: up to a second late for a working
+session and ten for an idle one. A session counts as a mission only once it keeps a todo list. With
+`display.tool_progress` off, pets cannot show tools or areas. A session's ring keeps 512 frames, so
+a burst between two polls can drop frames, which the Room reads as a gap rather than guessing.
+Helpers show the tool they use but not its target, since Hermes gives only a free-text preview. A
+backend restart starts the Room again from what Hermes lists.
