@@ -387,6 +387,17 @@ export interface FilePreview {
   mime?: string
 }
 
+/** What `fs.lock` got: the lock (until `fs.unlock(id)`), a wait that ran out, or no way to take it here. */
+export type FileLockResult = { status: 'locked'; id: string } | { status: 'timeout' } | { status: 'unavailable'; reason: string }
+
+/** `fs.writeText` options. */
+export interface WriteTextOptions {
+  /** Replace the file through a renamed temporary, so readers never see it half written. */
+  atomic?: boolean
+  /** With `atomic`: write only if the file still holds exactly this text (`null`: only if absent). */
+  expect?: string | null
+}
+
 /** A file read whole for Hermes to receive (`file.attach`) when it cannot read this computer's files. */
 export interface AttachmentFile {
   name: string
@@ -847,6 +858,9 @@ export const IPC = {
   fsImageInfo: 'herald-os:fs:image-info',
   fsWriteText: 'herald-os:fs:write-text',
   fsMkdir: 'herald-os:fs:mkdir',
+  /** Take or release the exclusive lock Hermes's memory tool takes on a `.lock` file. */
+  fsLock: 'herald-os:fs:lock',
+  fsUnlock: 'herald-os:fs:unlock',
   fsRename: 'herald-os:fs:rename',
   fsTrash: 'herald-os:fs:trash',
   fsExportPdf: 'herald-os:fs:export-pdf',
