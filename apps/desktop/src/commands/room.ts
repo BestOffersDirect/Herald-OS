@@ -13,10 +13,10 @@ const counted = (n: number, one: string, other: string): string => `${n} ${n ===
 
 const listed = (parts: string[]): string => (parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : (parts[0] ?? ''))
 
-/** Work outside Herald, when the elsewhere lane is on: read out after the Room's own, and said to be coarse. */
+/** Work outside Herald, when the elsewhere lane is on: read out after the Room's own, apart from it. */
 function elsewhereText(lines: readonly string[]): string {
   const shown = lines.slice(0, MAX_LINES)
-  const text = `Outside Herald, from Hermes's session list: ${shown.join('. ')}`
+  const text = `Outside Herald: ${shown.join('. ')}`
 
   return lines.length > shown.length ? `${text}, and ${lines.length - shown.length} more` : text
 }

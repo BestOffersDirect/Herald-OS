@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RoomAgent, RoomApproval, RoomCaps, RoomFact } from '../model/types.ts'
-import { agentLine, agentTitle, BUBBLE_CHARS, bubbleText, capsNotice, countsOf, displayStep, doingText, roomNotices, sameFacts, tagFacts } from './labels.ts'
+import { agentLine, agentTitle, BUBBLE_CHARS, bubbleText, capsNotice, countsOf, displayStep, doingText, laneWords, roomNotices, sameFacts, tagFacts } from './labels.ts'
 
 function agent(patch: Partial<RoomAgent> = {}): RoomAgent {
   return {
@@ -27,6 +27,7 @@ function agent(patch: Partial<RoomAgent> = {}): RoomAgent {
     desk: null,
     automation: null,
     elsewhere: null,
+    usage: null,
     trace: {},
     ...patch
   }
@@ -200,5 +201,33 @@ describe('roomNotices', () => {
 
   it('does not call an unknown tool progress off', () => {
     expect(roomNotices({ connected: true, state: { toolProgress: null, caps: ALL_CAPS }, pets: 1 })).toEqual([])
+  })
+})
+
+describe('work outside Herald', () => {
+  const waiting = agent({ id: 'e:tg1', kind: 'elsewhere', phase: 'waiting', step: 'waiting for your OK in Telegram', elsewhere: { where: 'Telegram', active: true, lastActiveAt: 1, approval: true, liveAt: 1 } })
+
+  it('names a helper outside Herald that has no title', () => {
+    expect(agentTitle(agent({ kind: 'elsewhere', parentId: 'e:tg1' }))).toBe('A helper outside Herald')
+    expect(agentTitle(agent({ kind: 'elsewhere' }))).toBe('A Hermes session')
+    expect(agentTitle(agent({ kind: 'helper', parentId: 's:1' }))).toBe('A helper')
+  })
+
+  it('says where an approval waits, and leaves it off the tag its sign already says', () => {
+    const facts: RoomFact[] = [
+      { kind: 'waiting', text: 'waiting for your OK in Telegram', trace: null },
+      { kind: 'activity', text: 'Telegram · active now', trace: null }
+    ]
+
+    expect(doingText(waiting)).toBe('waiting for your OK in Telegram')
+    expect(doingText({ ...waiting, step: null })).toBe('waiting for your OK in Telegram')
+    expect(tagFacts(waiting, facts, null).map(fact => fact.text)).toEqual(['Telegram · active now'])
+  })
+
+  it('says the lane is coarse, or that it shows live steps while live detail is on', () => {
+    expect(laneWords(false)).toEqual({ note: 'Coarse: titles and activity, read once a minute', about: "Hermes work outside Herald, from Hermes's session list: titles and whether each is active, read once a minute. The room shows no steps for it." })
+    expect(laneWords(true).note).toBe('Live steps from Hermes in each app')
+    expect(laneWords(true).about).toContain('by name only')
+    expect(laneWords(true).about).toContain('Approvals there are answered there.')
   })
 })

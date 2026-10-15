@@ -49,8 +49,15 @@ describe('a cron job, cut down', () => {
   it('takes a run row’s times and Hermes’s is_active, never its title or preview', () => {
     const parsed = roomCronRun({ id: 'cron_abc_20261015_020000', started_at: 1_792_000_000, ended_at: null, is_active: true, title: 'Inbox summary', preview: 'You have 3 emails from…', end_reason: null })
 
-    expect(parsed).toEqual({ id: 'cron_abc_20261015_020000', startedAt: 1_792_000_000_000, endedAt: null, active: true, failed: false })
+    expect(parsed).toEqual({ id: 'cron_abc_20261015_020000', startedAt: 1_792_000_000_000, endedAt: null, active: true, failed: false, usage: null })
     expect(roomCronRun({ id: 'r', end_reason: 'error: timeout' })?.failed).toBe(true)
+  })
+
+  it('keeps a run’s token counts and cost for cost meters, as a session row has them', () => {
+    const parsed = roomCronRun({ id: 'r', input_tokens: 800, output_tokens: 90, reasoning_tokens: 12, estimated_cost_usd: 0.002, actual_cost_usd: null, cost_status: 'estimated', model: 'gpt-x', title: 'Inbox summary' })
+
+    expect(parsed?.usage).toEqual({ input: 800, output: 90, costUsd: 0.002, costStatus: 'estimated' })
+    expect(JSON.stringify(parsed)).not.toMatch(/gpt-x|Inbox/)
   })
 
   it('moves its signature when a run starts or ends', () => {
@@ -63,11 +70,11 @@ describe('a cron job, cut down', () => {
 
 describe('an automation’s status', () => {
   it('is running while its latest run is active, and keeps that between reads of its runs', () => {
-    const running = automationOf(job(), { id: 'r1', startedAt: T0, endedAt: null, active: true, failed: false }, null)
+    const running = automationOf(job(), { id: 'r1', startedAt: T0, endedAt: null, active: true, failed: false, usage: null }, null)
 
     expect(running).toMatchObject({ running: true, runStartedAt: T0 })
     expect(automationOf(job(), undefined, running)).toMatchObject({ running: true, runStartedAt: T0 })
-    expect(automationOf(job({ lastRunAt: T0 + MIN, lastOutcome: 'ok' }), { id: 'r1', startedAt: T0, endedAt: T0 + MIN, active: false, failed: false }, running)).toMatchObject({
+    expect(automationOf(job({ lastRunAt: T0 + MIN, lastOutcome: 'ok' }), { id: 'r1', startedAt: T0, endedAt: T0 + MIN, active: false, failed: false, usage: null }, running)).toMatchObject({
       running: false,
       runStartedAt: null,
       lastRunAt: T0 + MIN,
@@ -76,21 +83,21 @@ describe('an automation’s status', () => {
   })
 
   it('falls back on the run for the last outcome when the job says nothing', () => {
-    expect(automationOf(job(), { id: 'r1', startedAt: T0, endedAt: T0 + MIN, active: false, failed: true }, null)).toMatchObject({ lastRunAt: T0 + MIN, lastOutcome: 'failed' })
+    expect(automationOf(job(), { id: 'r1', startedAt: T0, endedAt: T0 + MIN, active: false, failed: true, usage: null }, null)).toMatchObject({ lastRunAt: T0 + MIN, lastOutcome: 'failed' })
     expect(automationOf(job(), null, null)).toMatchObject({ running: false, lastRunAt: null, lastOutcome: null })
   })
 })
 
 describe('automations in the room', () => {
   it('stand in the Automations corner: at work while a run is under way, resting between runs', () => {
-    let state = run(EMPTY_ROOM, automations([job()], { ':job1': { id: 'r1', startedAt: T0, endedAt: null, active: true, failed: false } }, T0 + 5_000))
+    let state = run(EMPTY_ROOM, automations([job()], { ':job1': { id: 'r1', startedAt: T0, endedAt: null, active: true, failed: false, usage: null } }, T0 + 5_000))
     const pet = state.agents['a::job1']
 
     expect(pet).toMatchObject({ kind: 'automation', title: 'Morning digest', phase: 'tool', area: 'automations', step: 'running', target: null, sessionId: '' })
     expect(pet.trace.automation).toEqual({ source: 'cron_runs', type: 'GET /api/cron/jobs/{id}/runs', at: T0 + 5_000 })
     expect(factsOf(pet, state, T0 + 3 * MIN).map(fact => fact.text)).toEqual(['running for 3 minutes'])
 
-    state = run(state, automations([job({ lastRunAt: T0 + 4 * MIN, lastOutcome: 'ok' })], { ':job1': { id: 'r1', startedAt: T0, endedAt: T0 + 4 * MIN, active: false, failed: false } }, T0 + 4 * MIN))
+    state = run(state, automations([job({ lastRunAt: T0 + 4 * MIN, lastOutcome: 'ok' })], { ':job1': { id: 'r1', startedAt: T0, endedAt: T0 + 4 * MIN, active: false, failed: false, usage: null } }, T0 + 4 * MIN))
     expect(state.agents['a::job1']).toMatchObject({ phase: 'idle', area: 'automations', step: null })
     expect(factsOf(state.agents['a::job1'], state, T0 + 124 * MIN).map(fact => fact.text)).toEqual(['ran 2 hours ago'])
   })
@@ -113,7 +120,7 @@ describe('automations in the room', () => {
   })
 
   it('counts a run under way as work, and an automation between runs not at all', () => {
-    const state = run(EMPTY_ROOM, automations([job(), job({ key: ':b', id: 'b', name: 'Weekly report' })], { ':job1': { id: 'r1', startedAt: T0, endedAt: null, active: true, failed: false } }, T0))
+    const state = run(EMPTY_ROOM, automations([job(), job({ key: ':b', id: 'b', name: 'Weekly report' })], { ':job1': { id: 'r1', startedAt: T0, endedAt: null, active: true, failed: false, usage: null } }, T0))
     const summary = summarizeRoom(state, T0 + MIN)
 
     expect(summary).toMatchObject({ total: 1, working: 1, idle: 0, automations: 1 })
@@ -121,7 +128,7 @@ describe('automations in the room', () => {
   })
 
   it('reads the job list again soon after cron.changed, and a running job’s runs often', () => {
-    const state = run(EMPTY_ROOM, automations([job()], { ':job1': { id: 'r1', startedAt: T0, endedAt: null, active: true, failed: false } }, T0))
+    const state = run(EMPTY_ROOM, automations([job()], { ':job1': { id: 'r1', startedAt: T0, endedAt: null, active: true, failed: false, usage: null } }, T0))
     const clock = { ...emptyClock(), listed: true, jobsAt: T0, runsAt: { ':job1': T0 } }
 
     expect(roomDue(state, clock).automations).toBe(T0 + ROOM_TIMING.jobsBusyMs)

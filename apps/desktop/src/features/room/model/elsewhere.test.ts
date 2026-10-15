@@ -9,7 +9,7 @@ import type { RoomState } from './types.ts'
 const T0 = 1_792_000_000_000
 const MIN = 60_000
 
-const row = (patch: Partial<RoomElsewhereRow> & { id: string }): RoomElsewhereRow => ({ source: 'telegram', where: 'Telegram', title: '', startedAt: T0 - 10 * MIN, lastActiveAt: T0 - 30_000, active: true, ...patch })
+const row = (patch: Partial<RoomElsewhereRow> & { id: string }): RoomElsewhereRow => ({ source: 'telegram', where: 'Telegram', title: '', startedAt: T0 - 10 * MIN, lastActiveAt: T0 - 30_000, active: true, usage: null, ...patch })
 
 const run = (state: RoomState, ...inputs: RoomInput[]): RoomState => inputs.reduce(reduceRoom, state)
 
@@ -21,8 +21,16 @@ describe('a session row from the session database', () => {
   it('keeps its title, source, times and is_active, never its preview, model or counts', () => {
     const parsed = roomElsewhereRow({ id: 's1', source: 'Telegram', title: 'Support bot', preview: 'Hi, my card was charged twice', model: 'gpt-x', message_count: 42, started_at: 1_791_999_000, last_active: 1_791_999_900, is_active: true })
 
-    expect(parsed).toEqual({ id: 's1', source: 'telegram', where: 'Telegram', title: 'Support bot', startedAt: 1_791_999_000_000, lastActiveAt: 1_791_999_900_000, active: true })
+    expect(parsed).toEqual({ id: 's1', source: 'telegram', where: 'Telegram', title: 'Support bot', startedAt: 1_791_999_000_000, lastActiveAt: 1_791_999_900_000, active: true, usage: null })
     expect(JSON.stringify(parsed)).not.toMatch(/card|charged|gpt-x|42/)
+  })
+
+  it('keeps its token counts and cost only when cost meters ask for them', () => {
+    const raw = { id: 's1', source: 'telegram', input_tokens: 9000, output_tokens: 1200, reasoning_tokens: 400, estimated_cost_usd: 0.031, actual_cost_usd: null, cost_status: 'estimated', model: 'gpt-x' }
+
+    expect(roomElsewhereRow(raw)?.usage).toBeNull()
+    expect(roomElsewhereRow(raw, true)?.usage).toEqual({ input: 9000, output: 1200, costUsd: 0.031, costStatus: 'estimated' })
+    expect(JSON.stringify(roomElsewhereRow(raw, true))).not.toMatch(/gpt-x|400/)
   })
 
   it('says where it runs from a fixed table, never the raw source', () => {

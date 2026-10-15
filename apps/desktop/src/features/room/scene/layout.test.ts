@@ -27,6 +27,7 @@ function agent(id: string, patch: Partial<RoomAgent> = {}): RoomAgent {
     desk: null,
     automation: null,
     elsewhere: null,
+    usage: null,
     trace: {},
     ...patch
   }

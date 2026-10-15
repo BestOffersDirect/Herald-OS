@@ -1,8 +1,28 @@
 import { useStore } from '@nanostores/react'
-import { IconBroadcast, IconBubbleText, IconColorSwatch, IconDeviceDesktop, IconFileText, IconMessages, IconPaw, IconRepeat, IconSofa, IconSubtask, IconTarget, IconWalk } from '@tabler/icons-react'
-import { type ReactNode, useState } from 'react'
-import type { RoomKind, RoomMotion, RoomPrefsPatch } from '../../../shared/room.ts'
+import {
+  IconActivity,
+  IconBroadcast,
+  IconBubbleText,
+  IconCalendarTime,
+  IconCoin,
+  IconColorSwatch,
+  IconDeviceDesktop,
+  IconFileText,
+  IconHistory,
+  IconMessages,
+  IconPaw,
+  IconRepeat,
+  IconSofa,
+  IconSubtask,
+  IconSum,
+  IconTarget,
+  IconTrash,
+  IconWalk
+} from '@tabler/icons-react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { ROOM_LOG_DAYS, type RoomKind, type RoomMotion, type RoomPrefsPatch } from '../../../shared/room.ts'
 import { Chips, GlassButton, Toggle } from '../../components/ui/glass.tsx'
+import { formatBytes } from '../../lib/format.ts'
 import { useT } from '../../store/i18n.ts'
 import { openApp } from '../../store/windows.ts'
 import { useReducedMotion } from '../pet/hooks.ts'
@@ -10,11 +30,14 @@ import { $petInfo } from '../pet/info.ts'
 import { kindPets } from '../petdex/assign.ts'
 import { PetFigure } from '../petdex/PetFigure.tsx'
 import { errorText, focusSettings, InlineNote, markSaved, MenuDropdown, SectionTitle, SettingsGroup, SettingsRow } from '../settings/sections/shared.tsx'
+import { roomBridge } from './bridge.ts'
 import { $roomPrefs, setRoomPrefs } from './prefs.ts'
+import { restartRoomLog } from './store.ts'
 
 /*
  * Settings > Pet Room. Which pet stands for each kind of work and how the Room moves are Herald's
- * own (prefs.json `room`); the pets are the ones installed for Hermes, borrowed as they are.
+ * own (prefs.json `room`); the pets are the ones installed for Hermes, borrowed as they are. Work
+ * outside Herald, its live steps, the activity log and cost meters are off until turned on.
  */
 
 /** The kinds of work the Room shows; work outside Herald only while its lane is on. */
@@ -35,11 +58,68 @@ const MOTIONS: { id: RoomMotion; label: string; description: string }[] = [
 /** The menu's id for "Pick for me": a pet's folder name is never empty. */
 const PICK = ''
 
+const LOG_DAYS = ROOM_LOG_DAYS.map(days => ({ id: String(days), label: days === 1 ? '1 day' : `${days} days` }))
+
 function PetPreview({ slug, still }: { slug: string | null; still: boolean }) {
   return (
     <span className="flex size-12 items-center justify-center overflow-hidden rounded-lg bg-white/6">
       {slug ? <PetFigure slug={slug} scale={0.22} still={still} /> : <IconPaw size={18} className="text-fg-4" />}
     </span>
+  )
+}
+
+/** The activity log's size on disk, read when the section opens and again on `reread`; null outside Electron. */
+function useLogBytes(): [number | null, () => void] {
+  const [bytes, setBytes] = useState<number | null>(null)
+
+  const reread = useCallback(() => {
+    roomBridge()
+      ?.logDays()
+      .then(
+        days => setBytes(days.reduce((sum, day) => sum + day.bytes, 0)),
+        () => setBytes(null)
+      )
+  }, [])
+
+  useEffect(reread, [reread])
+
+  return [bytes, reread]
+}
+
+/** Deleting the log asks once more before it deletes. */
+function DeleteLog({ disabled, onDelete }: { disabled: boolean; onDelete: () => Promise<void> }) {
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const remove = async () => {
+    setConfirming(false)
+    setBusy(true)
+
+    try {
+      await onDelete()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (confirming) {
+    return (
+      <div className="animate-pop flex items-center gap-2 text-[12px] text-fg-2">
+        <span>Delete the whole log?</span>
+        <GlassButton size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+          Cancel
+        </GlassButton>
+        <GlassButton size="sm" variant="danger" onClick={() => void remove()} aria-label="Delete the activity log">
+          Delete
+        </GlassButton>
+      </div>
+    )
+  }
+
+  return (
+    <GlassButton size="sm" onClick={() => setConfirming(true)} disabled={disabled || busy}>
+      Delete activity log
+    </GlassButton>
   )
 }
 
@@ -49,11 +129,25 @@ export function RoomSection() {
   const prefs = useStore($roomPrefs)
   const reduced = useReducedMotion()
   const [error, setError] = useState<string | null>(null)
+  const [logBytes, rereadLog] = useLogBytes()
   const motion = MOTIONS.find(item => item.id === prefs.motion) ?? MOTIONS[0]
 
   const save = (patch: RoomPrefsPatch) => {
     setError(null)
     setRoomPrefs(patch).then(markSaved, reason => setError(errorText(reason)))
+  }
+
+  const deleteLog = async () => {
+    setError(null)
+
+    try {
+      await roomBridge()?.deleteLog()
+      restartRoomLog()
+    } catch (reason) {
+      setError(errorText(reason))
+    }
+
+    rereadLog()
   }
 
   const picked = kindPets(info.installed, prefs)
@@ -135,6 +229,55 @@ export function RoomSection() {
           keywords="pet room elsewhere outside lane telegram discord cli tui gateway sessions"
         >
           <Toggle checked={prefs.elsewhere} onChange={next => save({ elsewhere: next })} label="Show Hermes work outside Herald" />
+        </SettingsRow>
+        <SettingsRow
+          icon={<IconActivity />}
+          label="Live steps from Hermes outside Herald"
+          description="Herald's bridge plugin in each Hermes process reports which tool each piece of work is using, the helpers it starts and the approvals it waits on, by name only: never what anyone wrote, a command, a file's content or a result. Nothing is sent while this is off. Approvals there are shown in the room and never answered here."
+          keywords="pet room elsewhere outside live steps tools helpers approvals plugin bridge activity"
+        >
+          <Toggle checked={prefs.elsewhereLive} disabled={!prefs.elsewhere} onChange={next => save({ elsewhereLive: next })} label="Live steps from Hermes outside Herald" />
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup title="Activity log">
+        <SettingsRow
+          icon={<IconHistory />}
+          label="Keep an activity log"
+          description="For the time-lapse in the Pet Room, Herald keeps what the room showed in its data folder: the kind of each agent, where it worked, its steps and the names it worked on, hand-offs, approval waits but never what they asked, and automation runs. Never titles, chat or file content."
+          keywords="pet room activity log history time-lapse timelapse replay record keep"
+        >
+          <Toggle checked={prefs.log} onChange={next => save({ log: next })} label="Keep an activity log" />
+        </SettingsRow>
+        <SettingsRow icon={<IconCalendarTime />} label="Keep the log for" description="Days older than this are deleted." keywords="pet room activity log days retention keep">
+          <Chips items={LOG_DAYS} value={String(prefs.logDays)} onChange={next => save({ logDays: Number(next) })} />
+        </SettingsRow>
+        <SettingsRow
+          icon={<IconTrash />}
+          label="Delete activity log"
+          description={logBytes === null ? 'Delete every day of the log now.' : logBytes === 0 ? 'The log is empty.' : `The log takes ${formatBytes(logBytes)}. Delete every day of it now.`}
+          keywords="pet room activity log delete clear erase size"
+        >
+          <DeleteLog disabled={logBytes === 0} onDelete={deleteLog} />
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup title="Cost meters">
+        <SettingsRow
+          icon={<IconCoin />}
+          label="Show cost meters"
+          description="Each pet's name tag shows the tokens and cost of its work as Hermes counted them, and an estimate is labelled as one. While this and the total are off, the Room reads nothing extra for them."
+          keywords="pet room cost costs meter meters tokens money price spend usage"
+        >
+          <Toggle checked={prefs.costs} onChange={next => save({ costs: next })} label="Show cost meters" />
+        </SettingsRow>
+        <SettingsRow
+          icon={<IconSum />}
+          label="Show the total"
+          description="The Room's header adds up the tokens and cost Hermes counted for the work in the room, marked as an estimate when any part of it is one. Helpers are not added twice: Hermes counts them in the conversation that started them."
+          keywords="pet room cost costs total sum meters tokens money header"
+        >
+          <Toggle checked={prefs.costTotal} onChange={next => save({ costTotal: next })} label="Show the total" />
         </SettingsRow>
       </SettingsGroup>
 

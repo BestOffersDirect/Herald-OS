@@ -19,6 +19,7 @@ import { type ComponentType, type CSSProperties, memo } from 'react'
 import { HermesMark } from '../../../components/hermes-mark.tsx'
 import { cn } from '../../../lib/cn.ts'
 import type { RoomArea } from '../model/types.ts'
+import { laneWords } from './labels.ts'
 import { LANE_HEADER, type Rect, type RoomSpot, type SceneLayout, type Station } from './layout.ts'
 
 type Icon = ComponentType<{ size?: number; className?: string; stroke?: number }>
@@ -49,8 +50,6 @@ const DESK_KINDS: Partial<Record<RoomArea, string>> = {
 }
 
 export const LANE_TITLE = 'Outside Herald'
-export const LANE_NOTE = 'Coarse: titles and activity, read once a minute'
-const LANE_ABOUT = "Hermes work outside Herald, from Hermes's session list: titles and whether each is active, read once a minute. The room shows no steps for it."
 
 const box = (rect: Rect) => ({ left: rect.x, top: rect.y, width: rect.width, height: rect.height })
 
@@ -166,17 +165,19 @@ function Desk({ station, unit, glowing, still, words, named }: Drawn & { unit: n
   )
 }
 
-/** The lane for work outside Herald: a strip outside the room, which says it is coarse. */
-function Lane({ station, words }: Drawn) {
+/** The lane for work outside Herald: a strip outside the room, which says how much it shows. */
+function Lane({ station, words, live }: Drawn & { live: boolean }) {
+  const { note, about } = laneWords(live)
+
   return (
     <div className="absolute border-l border-line bg-black/20" style={box(station.rect)}>
       {words && (
-        <div className="pointer-events-auto flex flex-col gap-0.5 px-3 pt-2.5" style={{ height: LANE_HEADER }} title={LANE_ABOUT}>
+        <div className="pointer-events-auto flex flex-col gap-0.5 px-3 pt-2.5" style={{ height: LANE_HEADER }} title={about}>
           <span className="flex items-center gap-1.5 text-[11.5px] leading-tight font-semibold text-fg-2">
             <IconBroadcast size={13} className="shrink-0 text-fg-3" />
             <span className="truncate">{LANE_TITLE}</span>
           </span>
-          <span className="line-clamp-2 text-[9.5px] leading-tight text-fg-4">{LANE_NOTE}</span>
+          <span className="line-clamp-2 text-[9.5px] leading-tight text-fg-4">{note}</span>
         </div>
       )}
     </div>
@@ -212,10 +213,12 @@ export interface RoomBackdropProps {
   deskNames: boolean
   /** Words on the walls and furniture; off for the screensaver. */
   words?: boolean
+  /** The lane shows live steps from Herald's bridge plugin, not only the session list's titles. */
+  laneLive?: boolean
 }
 
 /** The room drawn once per size: walls, floor, stations, desks and furniture; a station glows while a pet works there. */
-export const RoomBackdrop = memo(function RoomBackdrop({ layout, glowing, still, deskNames, words = true }: RoomBackdropProps) {
+export const RoomBackdrop = memo(function RoomBackdrop({ layout, glowing, still, deskNames, words = true, laneLive = false }: RoomBackdropProps) {
   const { unit } = layout
   const lines = Math.max(18, Math.round(unit * 0.62))
   const roomWidth = layout.wall.width
@@ -240,7 +243,7 @@ export const RoomBackdrop = memo(function RoomBackdrop({ layout, glowing, still,
 
         switch (station.wall) {
           case 'lane':
-            return <Lane key={station.id} {...drawn} />
+            return <Lane key={station.id} {...drawn} live={laneLive} />
           case 'desk':
             return <Desk key={station.id} {...drawn} unit={unit} named={deskNames} />
           case 'front':

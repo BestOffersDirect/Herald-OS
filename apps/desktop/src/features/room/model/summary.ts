@@ -1,4 +1,5 @@
 import { factsOf } from './facts.ts'
+import { busyOutside } from './outside.ts'
 import type { RoomAgent, RoomPhase, RoomState } from './types.ts'
 
 export interface RoomSummary {
@@ -10,7 +11,7 @@ export interface RoomSummary {
   helpers: number
   /** Automations with a run under way, counted in `working` too. */
   automations: number
-  /** Active work outside Herald, when the person has the elsewhere lane on; not in `total`. */
+  /** Active work outside Herald (live detail at work counts as active), when the person has the elsewhere lane on; not in `total`. */
   elsewhere: number
   /** One line per agent, from the fixed tables: "Budget review (mission): reading Budget.xlsx". */
   lines: string[]
@@ -25,7 +26,7 @@ const capitalized = (text: string): string => text.charAt(0).toUpperCase() + tex
 
 function kindWords(agent: RoomAgent, state: RoomState): string {
   if (agent.kind === 'elsewhere') {
-    return 'outside Herald'
+    return agent.parentId ? 'a helper outside Herald' : 'outside Herald'
   }
 
   if (agent.kind !== 'helper') {
@@ -50,12 +51,13 @@ function lineOf(agent: RoomAgent, state: RoomState, now: number): string {
 /**
  * What the Room shows now, for `room.status`: counts, then a line per agent, waiting first. Finished
  * helpers are on their way out and automations between runs are only waiting for their time, so
- * both are left out; work elsewhere is read out only while active.
+ * both are left out; work elsewhere is read out only while active, with its step when live detail
+ * gives one.
  */
 export function summarizeRoom(state: RoomState, now: number): RoomSummary {
   const present = Object.values(state.agents).filter(agent => agent.phase !== 'finished')
   const counted = present.filter(agent => agent.kind !== 'elsewhere' && !(agent.kind === 'automation' && agent.phase === 'idle'))
-  const away = present.filter(agent => agent.kind === 'elsewhere' && agent.elsewhere?.active)
+  const away = present.filter(agent => agent.kind === 'elsewhere' && (agent.elsewhere?.active || busyOutside(agent)))
   const agents = [...counted, ...away].sort(
     (a, b) => Number(a.kind === 'elsewhere') - Number(b.kind === 'elsewhere') || ORDER[a.phase] - ORDER[b.phase] || (a.startedAt ?? a.lastEventAt) - (b.startedAt ?? b.lastEventAt) || a.id.localeCompare(b.id)
   )

@@ -1,12 +1,15 @@
 import { shortName } from './areas.ts'
 import { timeOf } from './automations.ts'
+import { rowUsage } from './costs.ts'
+import type { RoomRowUsage } from './types.ts'
 
 /*
  * The elsewhere lane: Hermes work in other processes (messaging bots, the Hermes CLI and TUI,
  * Hermes's own desktop app, cron run by the messaging gateway), read from Hermes's session database
  * through `/api/sessions` only when the person turns the lane on. Coarse on purpose: a title,
  * where it runs (from a fixed table), whether Hermes counts it as active and when it last was,
- * read at most once a minute. A row's preview, model and counts never get here.
+ * read at most once a minute. A row's preview and model never get here, and its token counts and
+ * cost only while the person has cost meters on. Live steps come from model/outside.ts.
  */
 
 /** The lane is read this often while it is on and the Room is shown. */
@@ -18,8 +21,10 @@ export const ELSEWHERE_MAX = 12
 /** How many rows one read asks Hermes for, most recently active first. */
 export const ELSEWHERE_LIMIT = 40
 
-/** Sources that are Herald's own sessions (ADR-003, ADR-016) or helpers inside another session. */
-export const NOT_ELSEWHERE = ['herald_os', 'hermes_os', 'tool'] as const
+/** The sources Herald's own sessions are stored with (ADR-003, ADR-016). */
+export const HERALD_SOURCES = ['herald_os', 'hermes_os'] as const
+/** Sources that are Herald's own sessions or helpers inside another session. */
+export const NOT_ELSEWHERE = [...HERALD_SOURCES, 'tool'] as const
 
 const TITLE_MAX = 60
 /** A cron run's session id: `cron_<job id>_<YYYYmmdd_HHMMSS>`. */
@@ -71,6 +76,8 @@ export interface RoomElsewhereRow {
   startedAt: number | null
   lastActiveAt: number | null
   active: boolean
+  /** Its token counts and cost, kept only while cost meters are on. */
+  usage: RoomRowUsage | null
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -80,8 +87,8 @@ function record(value: unknown): Record<string, unknown> {
 /** Where a source runs, from the fixed table. */
 export const whereOf = (source: string | null): string => (source && Object.hasOwn(WHERE, source) ? WHERE[source] : ELSEWHERE_FALLBACK)
 
-/** A `/api/sessions` row: id, source, title, times and `is_active`; never its preview. */
-export function roomElsewhereRow(raw: unknown): RoomElsewhereRow | null {
+/** A `/api/sessions` row: id, source, title, times and `is_active`, and with `counts` its token counts and cost; never its preview. */
+export function roomElsewhereRow(raw: unknown, counts = false): RoomElsewhereRow | null {
   const row = record(raw)
   const id = typeof row.id === 'string' && row.id.trim() ? row.id.trim() : null
 
@@ -98,7 +105,8 @@ export function roomElsewhereRow(raw: unknown): RoomElsewhereRow | null {
     title: typeof row.title === 'string' ? (shortName(row.title, TITLE_MAX) ?? '') : '',
     startedAt: timeOf(row.started_at),
     lastActiveAt: timeOf(row.last_active) ?? timeOf(row.started_at),
-    active: row.is_active === true
+    active: row.is_active === true,
+    usage: counts ? rowUsage(row) : null
   }
 }
 

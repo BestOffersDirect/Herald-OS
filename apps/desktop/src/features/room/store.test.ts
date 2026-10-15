@@ -1,6 +1,7 @@
 import type { ServerRequest, SessionActiveItem } from '@herald-os/client'
-import type { RoomPrefs } from '../../../shared/room.ts'
+import { ROOM_PREFS_DEFAULTS, type RoomActivity, type RoomPrefs } from '../../../shared/room.ts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ROOM_TIMING } from './model/schedule.ts'
 
 /*
  * Hermes, faked behind the gateway: every request is logged and answered from `hermes`, which a
@@ -64,28 +65,77 @@ const hermes = vi.hoisted(() => {
   return state
 })
 
+/** Main's side of the Room: live activity from Hermes outside Herald, which a test sends to whoever watches. */
+const relay = vi.hoisted(() => {
+  const state = {
+    listeners: new Set<(events: unknown[]) => void>(),
+    send(events: unknown[]) {
+      for (const listener of state.listeners) {
+        listener(events)
+      }
+    }
+  }
+
+  return state
+})
+
 const page = vi.hoisted(() => {
   const listeners = new Set<() => void>()
+  const windowListeners = new Map<string, Set<() => void>>()
   const doc = {
     visibilityState: 'visible',
     addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
     removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener)
   }
-  const heraldOS = { office: { presence: async () => hermes.office }, canvas: { presence: async () => hermes.canvas } }
-  Object.assign(globalThis, { document: doc, window: { innerWidth: 1440, innerHeight: 900, heraldOS } })
+  /** What the Room handed main for the activity log, batch by batch. */
+  const logged: Array<Array<Record<string, unknown>>> = []
+  const room = {
+    watchActivity: (listener: (events: unknown[]) => void) => {
+      relay.listeners.add(listener)
+
+      return () => {
+        relay.listeners.delete(listener)
+      }
+    },
+    appendLog: (entries: Array<Record<string, unknown>>) => {
+      logged.push(entries)
+    },
+    logDays: async () => [],
+    readLog: async () => [],
+    deleteLog: async () => undefined
+  }
+  const heraldOS = { office: { presence: async () => hermes.office }, canvas: { presence: async () => hermes.canvas }, room }
+  const win = {
+    innerWidth: 1440,
+    innerHeight: 900,
+    heraldOS,
+    addEventListener: (type: string, listener: () => void) => {
+      const set = windowListeners.get(type) ?? new Set()
+      set.add(listener)
+      windowListeners.set(type, set)
+    },
+    removeEventListener: (type: string, listener: () => void) => windowListeners.get(type)?.delete(listener)
+  }
+  Object.assign(globalThis, { document: doc, window: win })
 
   return {
+    logged,
     hide(hidden: boolean) {
       doc.visibilityState = hidden ? 'hidden' : 'visible'
 
       for (const listener of listeners) {
         listener()
       }
+    },
+    leave() {
+      for (const listener of windowListeners.get('pagehide') ?? []) {
+        listener()
+      }
     }
   }
 })
 
-const ui = vi.hoisted(() => ({ panels: false, answerApproval: (_id: unknown, _choice: unknown): boolean => true }))
+const ui = vi.hoisted(() => ({ panels: false, main: true, answerApproval: (_id: unknown, _choice: unknown): boolean => true }))
 
 vi.mock('../../store/gateway.ts', async () => {
   const { atom } = await import('nanostores')
@@ -154,7 +204,9 @@ vi.mock('../../store/shell.ts', () => ({
   get isPanels() {
     return ui.panels
   },
-  isMainSurface: true,
+  get isMainSurface() {
+    return ui.main
+  },
   openSurface: vi.fn(),
   relayToMain: vi.fn(),
   onShellCommand: vi.fn(() => () => undefined)
@@ -245,6 +297,10 @@ async function load() {
   const prefs = await import('./prefs.ts')
   const commands = await import('../../store/os-commands.ts')
 
+  // The mocked prefs keep one atom across loads.
+  const roomPrefs = prefs.$roomPrefs as unknown as { set: (value: RoomPrefs) => void }
+
+  roomPrefs.set({ ...ROOM_PREFS_DEFAULTS })
   requests.$pendingRequests.set([])
   chat.$chats.set({})
   chat.$activeChatId.set(null)
@@ -265,7 +321,10 @@ beforeEach(() => {
   vi.useFakeTimers({ now: T0 })
   vi.clearAllMocks()
   Object.assign(hermes, { open: true, calls: [], live: [], guards: [], sessions: [], buffers: {}, requests: {}, helpers: [], toolProgress: 'all', epoch: 'e1', missing: new Set(), hold: null, jobs: [], runs: {}, stored: [], rest: [], office: [], canvas: [] })
+  relay.listeners.clear()
+  page.logged.splice(0)
   ui.panels = false
+  ui.main = true
   ui.answerApproval = () => true
 })
 
@@ -819,5 +878,263 @@ describe('phase 2 feeds', () => {
     expect(store.$room.get().agents['s:live-2'].desk).toBe('docs:k2')
     expect(store.$room.get().agents['s:live-2'].trace.desk).toMatchObject({ source: 'command', type: 'docs.write' })
     expect(JSON.stringify(store.$room.get())).not.toContain('never kept')
+  })
+})
+
+describe('phase 3 feeds', () => {
+  // The mock holds a plain atom where the app derives one from prefs.json.
+  const roomPrefs = (prefs: { $roomPrefs: unknown }) => prefs.$roomPrefs as { get: () => RoomPrefs; set: (value: RoomPrefs) => void }
+  const change = (prefs: { $roomPrefs: unknown }, patch: Partial<RoomPrefs>) => roomPrefs(prefs).set({ ...roomPrefs(prefs).get(), ...patch })
+  const restCalls = (path: string) => hermes.rest.filter(call => call.path === path)
+  const activity = (patch: Partial<RoomActivity> & Pick<RoomActivity, 'seq' | 'kind'>): RoomActivity => ({ session: 'tg1', child: null, tool: null, target: null, call: null, status: null, source: 'telegram', at: Date.now(), ...patch })
+  const outside = (state: { agents: Record<string, unknown> }) => Object.keys(state.agents).filter(id => id.startsWith('e:'))
+
+  it('watches live activity only while the Room is fed and both switches are on, and drops live detail when either goes off', async () => {
+    const { store, retain, prefs } = await load()
+    const off = retain()
+
+    await flush()
+    change(prefs, { elsewhereLive: true })
+    await flush()
+    expect(relay.listeners.size).toBe(0)
+
+    change(prefs, { elsewhere: true })
+    await flush()
+    expect(relay.listeners.size).toBe(1)
+
+    relay.send([activity({ seq: 1, kind: 'session.start' }), activity({ seq: 2, kind: 'tool.start', tool: 'read_file', target: 'Budget.xlsx', call: 'c1' })])
+    await vi.advanceTimersByTimeAsync(200)
+    expect(store.$room.get().agents['e:tg1']).toMatchObject({ kind: 'elsewhere', phase: 'tool', area: 'files', step: 'reading Budget.xlsx' })
+
+    relay.send([activity({ seq: 3, kind: 'tool.end', tool: 'read_file', call: 'c1' })])
+    change(prefs, { elsewhereLive: false })
+    await vi.advanceTimersByTimeAsync(200)
+    expect(relay.listeners.size).toBe(0)
+    expect(store.$room.get().agents['e:tg1']).toMatchObject({ area: 'elsewhere', step: null, tool: null })
+    expect(store.$room.get().agents['e:tg1'].elsewhere?.liveAt).toBeNull()
+
+    change(prefs, { elsewhereLive: true })
+    await flush()
+    expect(relay.listeners.size).toBe(1)
+
+    page.hide(true)
+    expect(relay.listeners.size).toBe(0)
+    page.hide(false)
+    expect(relay.listeners.size).toBe(1)
+
+    change(prefs, { elsewhere: false })
+    await flush()
+    expect(relay.listeners.size).toBe(0)
+    expect(outside(store.$room.get())).toEqual([])
+
+    change(prefs, { elsewhere: true })
+    await flush()
+    expect(relay.listeners.size).toBe(1)
+
+    off()
+    expect(relay.listeners.size).toBe(0)
+  })
+
+  it('brings in work outside Herald the moment live detail names it, and reads the lane early to name it', async () => {
+    const { store, retain, prefs } = await load()
+
+    change(prefs, { elsewhere: true, elsewhereLive: true })
+    retain()
+    await flush()
+    expect(restCalls('/api/sessions')).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(20_000)
+    hermes.stored = [{ id: 'tg1', source: 'telegram', title: 'Support bot', is_active: true, last_active: Date.now() / 1000 }]
+    relay.send([activity({ seq: 1, kind: 'session.start' })])
+    await vi.advanceTimersByTimeAsync(200)
+
+    expect(store.$room.get().agents['e:tg1']).toMatchObject({ title: '', phase: 'thinking', step: 'thinking' })
+    expect(restCalls('/api/sessions')).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(ROOM_TIMING.elsewhereSoonMs)
+    expect(restCalls('/api/sessions')).toHaveLength(2)
+    expect(store.$room.get().agents['e:tg1']).toMatchObject({ title: 'Support bot', phase: 'thinking', step: 'thinking' })
+  })
+
+  it("reads Herald's own sessions' costs only while a meter is on: once a minute, and soon after a turn ends", async () => {
+    hermes.sessions = [row('live-1', 'idle', 'Budget review', 'stored-1')]
+    hermes.stored = [{ id: 'stored-1', source: 'herald_os', title: 'never kept', preview: 'never kept', input_tokens: 900, output_tokens: 100, estimated_cost_usd: 0.02, actual_cost_usd: null, cost_status: 'estimated' }]
+    const { store, retain, prefs } = await load()
+
+    retain()
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(restCalls('/api/sessions')).toHaveLength(0)
+
+    change(prefs, { costs: true })
+    await flush()
+    expect(restCalls('/api/sessions')).toEqual([{ path: '/api/sessions', query: { limit: 40, order: 'recent', sources: 'herald_os,hermes_os' } }])
+    expect(store.$room.get().agents['s:live-1'].usage).toMatchObject({ input: 900, output: 100, costUsd: 0.02, costStatus: 'estimated' })
+    expect(JSON.stringify(store.$room.get())).not.toContain('never kept')
+
+    await vi.advanceTimersByTimeAsync(20_000)
+    hermes.sessions = [row('live-1', 'working', 'Budget review', 'stored-1')]
+    buffer('live-1', ['message.start'])
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(store.$room.get().agents['s:live-1'].phase).toBe('thinking')
+
+    hermes.sessions = [row('live-1', 'idle', 'Budget review', 'stored-1')]
+    buffer('live-1', ['message.complete', { status: 'complete', usage: { input: 1_200, output: 150 } }])
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(store.$room.get().agents['s:live-1'].phase).toBe('idle')
+    expect(restCalls('/api/sessions')).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(ROOM_TIMING.costsSoonMs)
+    expect(restCalls('/api/sessions')).toHaveLength(2)
+    expect(store.$room.get().agents['s:live-1'].usage).toMatchObject({ input: 1_200, output: 150, costUsd: 0.02 })
+
+    change(prefs, { costs: false, costTotal: true })
+    await vi.advanceTimersByTimeAsync(61_000)
+    expect(restCalls('/api/sessions').length).toBeGreaterThan(2)
+
+    change(prefs, { costTotal: false })
+    const before = restCalls('/api/sessions').length
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(restCalls('/api/sessions')).toHaveLength(before)
+  })
+
+  it('never calls the session.usage method, and takes usage from the frames of that name', async () => {
+    hermes.sessions = [row('live-1', 'working', 'Budget review', 'stored-1')]
+    buffer('live-1', ['message.start'], ['session.usage', { usage: { input: 100, output: 20, calls: 1, model: 'never kept' } }])
+    const { store, retain, prefs } = await load()
+
+    change(prefs, { costs: true, costTotal: true, elsewhere: true, elsewhereLive: true })
+    retain()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(store.$room.get().agents['s:live-1'].usage).toMatchObject({ input: 100, output: 20, calls: 1 })
+
+    buffer('live-1', ['session.usage', { usage: { input: 300, output: 40, calls: 2 } }])
+    await vi.advanceTimersByTimeAsync(120_000)
+
+    expect(store.$room.get().agents['s:live-1'].usage).toMatchObject({ input: 300, output: 40, calls: 2 })
+    expect(store.$room.get().agents['s:live-1'].phase).toBe('thinking')
+    expect(calls('session.usage')).toEqual([])
+    expect(JSON.stringify(store.$room.get())).not.toContain('never kept')
+  })
+
+  it('keeps the lane’s token counts and cost only while a meter is on', async () => {
+    hermes.stored = [{ id: 'tg1', source: 'telegram', title: 'Support bot', is_active: true, last_active: T0 / 1000, input_tokens: 4_321, output_tokens: 765, estimated_cost_usd: 0.0123, cost_status: 'estimated' }]
+    const { store, retain, prefs } = await load()
+
+    change(prefs, { elsewhere: true })
+    retain()
+    await flush()
+    expect(store.$room.get().agents['e:tg1']).toMatchObject({ title: 'Support bot', usage: null })
+    expect(JSON.stringify(store.$room.get())).not.toMatch(/4321|765|0\.0123/)
+
+    change(prefs, { costs: true })
+    await vi.advanceTimersByTimeAsync(ROOM_TIMING.elsewhereFloorMs)
+    expect(store.$room.get().agents['e:tg1'].usage).toMatchObject({ input: 4_321, output: 765, costUsd: 0.0123, costStatus: 'estimated' })
+
+    change(prefs, { costs: false })
+    await vi.advanceTimersByTimeAsync(ROOM_TIMING.elsewhereMs)
+    expect(store.$room.get().agents['e:tg1'].usage).toBeNull()
+  })
+})
+
+describe('the activity log', () => {
+  const roomPrefs = (prefs: { $roomPrefs: unknown }) => prefs.$roomPrefs as { get: () => RoomPrefs; set: (value: RoomPrefs) => void }
+  const change = (prefs: { $roomPrefs: unknown }, patch: Partial<RoomPrefs>) => roomPrefs(prefs).set({ ...roomPrefs(prefs).get(), ...patch })
+  const sent = () => page.logged.flat()
+  const kinds = () => sent().map(entry => entry.k)
+  const unbinds: Array<() => void> = []
+
+  afterEach(() => {
+    for (const off of unbinds.splice(0)) {
+      off()
+    }
+  })
+
+  async function logging() {
+    const loaded = await load()
+    unbinds.push(loaded.store.bindRoomLog())
+
+    return loaded
+  }
+
+  it('feeds the Room for the log with nothing showing it, and only while the person keeps the log', async () => {
+    hermes.sessions = [row('live-1', 'working', 'Budget review')]
+    buffer('live-1', ['message.start'], ['tool.start', { tool_id: 't1', name: 'read_file', args: { path: '/Users/someone/Budget.xlsx', content: 'private text' } }])
+    const { store, prefs } = await logging()
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(calls()).toEqual([])
+    expect(sent()).toEqual([])
+
+    change(prefs, { log: true })
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(calls('session.active_list').length).toBeGreaterThan(0)
+    expect(kinds()[0]).toBe('begin')
+    expect(sent()).toContainEqual(expect.objectContaining({ k: 'agent', id: 's:live-1', kind: 'conversation', phase: 'tool', area: 'files', step: 'reading Budget.xlsx', target: 'Budget.xlsx' }))
+    expect(JSON.stringify(sent())).not.toMatch(/Budget review|private text|someone/)
+    expect(store.$room.get().agents['s:live-1']).toBeTruthy()
+
+    change(prefs, { log: false })
+    await flush()
+    expect(kinds().at(-1)).toBe('end')
+
+    const before = calls().length
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(calls().length).toBe(before)
+  })
+
+  it('logs while the Hermes window is hidden, and leaves the log ended when the page goes away', async () => {
+    hermes.sessions = [row('live-1', 'idle')]
+    const { prefs } = await logging()
+
+    page.hide(true)
+    change(prefs, { log: true })
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(kinds()[0]).toBe('begin')
+    expect(calls('session.active_list').length).toBeGreaterThan(0)
+
+    page.leave()
+    expect(kinds().at(-1)).toBe('end')
+  })
+
+  it('ends the log while Hermes is not connected and begins it again with what the Room shows', async () => {
+    hermes.sessions = [row('live-1', 'idle')]
+    const { prefs } = await logging()
+
+    change(prefs, { log: true })
+    await vi.advanceTimersByTimeAsync(3_000)
+    hermes.open = false
+    hermes.atoms.connection.set('closed')
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(kinds().at(-1)).toBe('end')
+
+    hermes.open = true
+    hermes.atoms.connection.set('open')
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(kinds().filter(kind => kind === 'begin')).toHaveLength(2)
+  })
+
+  it('begins again after the log was deleted, so the new file starts with what the Room shows', async () => {
+    hermes.sessions = [row('live-1', 'idle')]
+    const { store, prefs } = await logging()
+
+    change(prefs, { log: true })
+    await vi.advanceTimersByTimeAsync(3_000)
+    page.logged.splice(0)
+
+    store.restartRoomLog()
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(kinds()).toEqual(['end', 'begin', 'agent'])
+    expect(sent()[2]).toMatchObject({ id: 's:live-1', phase: 'idle' })
+  })
+
+  it('leaves the log to the Hermes window: another window of the Room logs nothing', async () => {
+    ui.main = false
+    const { store, prefs } = await load()
+
+    unbinds.push(store.bindRoomLog())
+    change(prefs, { log: true })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(calls()).toEqual([])
+    expect(sent()).toEqual([])
   })
 })

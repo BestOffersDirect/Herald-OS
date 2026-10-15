@@ -2,6 +2,7 @@ import { IconAlertTriangle, IconBolt, IconCircleCheck, IconHandStop, IconMessage
 import { type ComponentType, type CSSProperties, memo, type ReactNode } from 'react'
 import type { RoomKind } from '../../../../shared/room.ts'
 import { cn } from '../../../lib/cn.ts'
+import { meterOf } from '../model/costs.ts'
 import type { RoomAgent, RoomFact } from '../model/types.ts'
 import type { CarryKind } from './choreography.ts'
 import type { PetMarks } from './engine.ts'
@@ -64,8 +65,10 @@ export interface AgentOverlayProps {
   steps: boolean
   /** The name tag, facts, the words on its sign and Hermes's result summary; off for a screensaver. */
   names?: boolean
-  /** Its button opens the conversation and its sign the approval card; off for a screensaver and the lane. */
+  /** Its button opens the conversation and its sign the approval card; off for a screensaver and for work outside Herald. */
   interactive?: boolean
+  /** A token and cost meter under the name tag, when Hermes reported any; off unless the person turns meters on. */
+  meters?: boolean
   marks: PetMarks | null
   still: boolean
   signOpen: boolean
@@ -77,11 +80,14 @@ export interface AgentOverlayProps {
 }
 
 /** What stands with a pet: its button, name tag and facts, and above it a step bubble or a sign. */
-export const AgentOverlay = memo(function AgentOverlay({ agent, pet, facts, steps, names = true, interactive = true, marks, still, signOpen, rootRef, onOpen, onSign, children }: AgentOverlayProps) {
+export const AgentOverlay = memo(function AgentOverlay({ agent, pet, facts, steps, names = true, interactive = true, meters = false, marks, still, signOpen, rootRef, onOpen, onSign, children }: AgentOverlayProps) {
   const title = agentTitle(agent)
   const KindIcon = KIND_ICONS[agent.kind]
   const step = steps ? displayStep(agent.step) : null
   const said = names ? (marks?.bubble ?? null) : null
+  const meter = meters && names ? meterOf(agent) : null
+  // An approval waiting in a Hermes app outside Herald is answered there: its sign is never a button.
+  const waitsThere = agent.kind === 'elsewhere' && agent.elsewhere?.approval ? agent.elsewhere.where : null
   const carried = marks?.carry ? CARRY[marks.carry] : null
   const hit = { width: Math.round(pet.width * 0.66), height: Math.round(pet.height * 0.8) }
   const overhead = Math.round(pet.height * BUBBLE_RISE)
@@ -109,7 +115,12 @@ export const AgentOverlay = memo(function AgentOverlay({ agent, pet, facts, step
             <KindIcon size={11} className="shrink-0 text-fg-3" />
             <span className="truncate">{title}</span>
           </span>
-          {tagFacts(agent, facts, agent.approval ? null : (said ?? step)).slice(0, TAG_FACTS).map(fact => (
+          {meter && (
+            <span className="pointer-events-auto truncate rounded-md bg-black/25 px-1.5 py-px text-[10px] leading-tight text-fg-4 tabular-nums" style={{ maxWidth: widest + 24 }} title={meter.title}>
+              {meter.text}
+            </span>
+          )}
+          {tagFacts(agent, facts, agent.approval || waitsThere ? null : (said ?? step)).slice(0, TAG_FACTS).map(fact => (
             <span key={`${fact.kind}:${fact.text}`} className="line-clamp-2 w-max rounded-md bg-black/25 px-1.5 py-px text-center text-[10.5px] leading-tight text-fg-3" style={{ maxWidth: widest + 24 }}>
               {fact.text}
             </span>
@@ -137,6 +148,18 @@ export const AgentOverlay = memo(function AgentOverlay({ agent, pet, facts, step
               <IconHandStop size={13} />
             </span>
           )}
+          <span className="h-2 w-0.5 rounded-b bg-warn/50" />
+        </div>
+      ) : waitsThere ? (
+        <div className="absolute left-0 flex -translate-x-1/2 flex-col items-center" style={{ bottom: overhead - 6 }}>
+          <span
+            aria-hidden={names ? undefined : true}
+            title={names ? `Answer it in ${waitsThere}` : undefined}
+            className={cn('flex items-center gap-1.5 rounded-lg border border-warn/50 bg-bg-elevated py-1 text-[11.5px] font-medium whitespace-nowrap text-warn shadow-float', names ? 'pointer-events-auto px-2.5' : 'px-1.5', !still && 'animate-pop')}
+          >
+            <IconHandStop size={13} />
+            {names && `Needs your OK in ${waitsThere}`}
+          </span>
           <span className="h-2 w-0.5 rounded-b bg-warn/50" />
         </div>
       ) : said ? (

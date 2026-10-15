@@ -37,6 +37,7 @@ function agent(id: string, patch: Partial<RoomAgent> = {}): RoomAgent {
     desk: null,
     automation: null,
     elsewhere: null,
+    usage: null,
     trace: {},
     ...patch
   }
@@ -239,7 +240,7 @@ describe('RoomScene', () => {
   })
 
   it('shows work outside Herald in its lane only when the lane is on, and never opens it', () => {
-    const outside = agent('e:bot', { kind: 'elsewhere', title: 'Support bot', phase: 'thinking', area: 'elsewhere', sessionId: '', elsewhere: { where: 'Telegram', active: true, lastActiveAt: 1 } })
+    const outside = agent('e:bot', { kind: 'elsewhere', title: 'Support bot', phase: 'thinking', area: 'elsewhere', sessionId: '', elsewhere: { where: 'Telegram', active: true, lastActiveAt: 1, approval: false, liveAt: null } })
     render({ agents: [outside] })
 
     expect(host.textContent).not.toContain('Support bot')
@@ -255,5 +256,81 @@ describe('RoomScene', () => {
     render({ agents: [], lane: true })
 
     expect(host.textContent).toContain('No Hermes work outside Herald in the last hour.')
+  })
+
+  it('never opens work outside Herald at a station, and shows its approval as a sign that answers nothing', () => {
+    const waiting = agent('e:bot', { kind: 'elsewhere', title: 'Support bot', phase: 'waiting', area: 'bench', step: 'waiting for your OK in Telegram', sessionId: '', elsewhere: { where: 'Telegram', active: true, lastActiveAt: 1, approval: true, liveAt: 1 } })
+    const working = agent('e:cli', { kind: 'elsewhere', title: 'Refactor', phase: 'tool', area: 'files', step: 'editing main.py', sessionId: '', elsewhere: { where: 'the Hermes CLI', active: true, lastActiveAt: 1, approval: false, liveAt: 1 } })
+    render({ agents: [waiting, working], lane: true, facts: { 'e:bot': [{ kind: 'waiting', text: 'waiting for your OK in Telegram', trace: null }, { kind: 'activity', text: 'Telegram · active now', trace: null }] } })
+
+    const sign = [...host.querySelectorAll('span')].find(element => element.textContent === 'Needs your OK in Telegram')
+
+    expect(host.querySelectorAll('button[aria-label^="Open "]')).toHaveLength(0)
+    expect(sign).toBeDefined()
+    expect(sign?.closest('button')).toBeNull()
+    expect(sign?.getAttribute('title')).toBe('Answer it in Telegram')
+    expect(host.querySelector('[data-room-sign]')).toBeNull()
+    expect(host.textContent).toContain('Editing main.py')
+    expect(host.textContent).toContain('Telegram · active now')
+    expect(host.textContent).not.toContain(EMPTY_ROOM_TEXT)
+
+    act(() => sign?.click())
+
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(onAnswer).not.toHaveBeenCalled()
+    expect(buttons('Allow once')).toHaveLength(0)
+
+    render({ agents: [waiting], lane: true, names: false, interactive: false, chrome: false, steps: false })
+
+    expect(host.textContent?.trim()).toBe('')
+    expect(host.querySelector('[title]')).toBeNull()
+  })
+
+  it('shows a meter under each name tag and the total in the header only when the person asks for them', () => {
+    const usage = { input: 10_000, output: 2_345, reasoning: null, calls: 3, turn: 2_100, costUsd: 0.04, costStatus: 'estimated' as const, at: 1 }
+    const agents = [agent('s:1', { title: 'Budget review', usage })]
+    const total = { text: 'In the room: 12.3k tokens · ~$0.04 est.', title: "Tokens and cost Hermes counted for the work in the room. The cost is Hermes's estimate." }
+    render({ agents })
+
+    expect(host.textContent).not.toContain('tokens')
+
+    render({ agents, meters: true, total })
+
+    const meter = [...host.querySelectorAll('[title]')].find(element => element.textContent === '12.3k tokens · ~$0.04 est.')
+
+    expect(meter?.getAttribute('title')).toBe("Tokens Hermes counted for this conversation (this turn: 2.1k). The cost is Hermes's estimate.")
+    expect(host.querySelector(`[title="${total.title}"]`)?.textContent).toBe(total.text)
+
+    render({ agents, meters: true, total, names: false, chrome: false })
+
+    expect(host.textContent).not.toContain('tokens')
+  })
+
+  it('offers the time-lapse in the header only when there is a log to play back', () => {
+    const onTimeLapse = vi.fn()
+    render()
+
+    expect(buttons('Time-lapse')).toHaveLength(0)
+
+    render({ onTimeLapse })
+    act(() => buttons('Time-lapse')[0].click())
+
+    expect(onTimeLapse).toHaveBeenCalledOnce()
+
+    render({ onTimeLapse, chrome: false })
+
+    expect(buttons('Time-lapse')).toHaveLength(0)
+  })
+
+  it('says at the top of the lane whether it shows live steps or only titles', () => {
+    const outside = agent('e:bot', { kind: 'elsewhere', title: 'Support bot', phase: 'thinking', area: 'elsewhere', sessionId: '', elsewhere: { where: 'Telegram', active: true, lastActiveAt: 1, approval: false, liveAt: null } })
+    render({ agents: [outside], lane: true })
+
+    expect(host.textContent).toContain('Coarse: titles and activity, read once a minute')
+
+    render({ agents: [outside], lane: true, laneLive: true })
+
+    expect(host.textContent).toContain('Live steps from Hermes in each app')
+    expect(host.textContent).not.toContain('Coarse')
   })
 })

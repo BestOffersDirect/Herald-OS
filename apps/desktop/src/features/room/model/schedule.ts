@@ -29,8 +29,15 @@ export const ROOM_TIMING = {
   runsBusyMs: 15_000,
   runsQuietMs: 300_000,
   runsRecheckMs: 5_000,
-  /** The elsewhere lane, while it is on: at most once a minute. */
+  /** The elsewhere lane, while it is on: once a minute... */
   elsewhereMs: 60_000,
+  /** ...and this soon when live detail brings in work it has not listed, but never sooner than this after the last read. */
+  elsewhereSoonMs: 3_000,
+  elsewhereFloorMs: 15_000,
+  /** Herald's own sessions' costs, while cost meters are on: once a minute, soon after a turn ends, never sooner than this after the last read. */
+  costsMs: 60_000,
+  costsSoonMs: 3_000,
+  costsFloorMs: 15_000,
   /** The open documents: while an agent works in Office or Canvas, and otherwise. */
   desksBusyMs: 2_000,
   desksQuietMs: 10_000
@@ -55,6 +62,11 @@ export interface RoomClock {
   runsAt: Record<string, number>
   runsWanted: Record<string, number>
   elsewhereAt: number | null
+  /** When the lane is wanted sooner than its minute, for work live detail brought in. */
+  elsewhereWanted: number | null
+  costsAt: number | null
+  /** When Herald's costs are wanted sooner than their minute, after a turn ended. */
+  costsWanted: number | null
   desksAt: number | null
 }
 
@@ -68,6 +80,7 @@ export interface RoomDue {
   /** Per job key. */
   runs: Record<string, number>
   elsewhere: number
+  costs: number
   desks: number
 }
 
@@ -78,11 +91,29 @@ export interface RoomInflight {
   sessions: ReadonlySet<string>
   automations: boolean
   elsewhere: boolean
+  costs: boolean
   desks: boolean
 }
 
 export function emptyClock(): RoomClock {
-  return { listAt: null, listed: false, changedAt: null, helpersAt: null, configAt: null, polledAt: {}, liveAt: {}, jobsAt: null, jobsChangedAt: null, runsAt: {}, runsWanted: {}, elsewhereAt: null, desksAt: null }
+  return {
+    listAt: null,
+    listed: false,
+    changedAt: null,
+    helpersAt: null,
+    configAt: null,
+    polledAt: {},
+    liveAt: {},
+    jobsAt: null,
+    jobsChangedAt: null,
+    runsAt: {},
+    runsWanted: {},
+    elsewhereAt: null,
+    elsewhereWanted: null,
+    costsAt: null,
+    costsWanted: null,
+    desksAt: null
+  }
 }
 
 const BUSY = new Set<RoomPhase>(['starting', 'thinking', 'tool', 'waiting', 'queued'])
@@ -131,11 +162,21 @@ function runsDue(agents: readonly RoomAgent[], clock: RoomClock): Record<string,
   return runs
 }
 
+/** A read due every `everyMs` since the last one, or sooner when wanted, but never sooner than `floorMs` after it. */
+function readDue(at: number | null, wanted: number | null, everyMs: number, floorMs: number): number {
+  if (at === null) {
+    return 0
+  }
+
+  return Math.min(at + everyMs, wanted === null ? Infinity : Math.max(wanted, at + floorMs))
+}
+
 /**
  * When each call is due. `paused` sessions are not read at all (this window holds a request for
- * them); the elsewhere lane is read only while the person has it on.
+ * them); the elsewhere lane is read only while the person has it on, and Herald's own sessions'
+ * costs only while cost meters are.
  */
-export function roomDue(state: RoomState, clock: RoomClock, paused: ReadonlySet<string> = new Set(), options: { elsewhere: boolean } = { elsewhere: false }): RoomDue {
+export function roomDue(state: RoomState, clock: RoomClock, paused: ReadonlySet<string> = new Set(), options: { elsewhere: boolean; costs?: boolean } = { elsewhere: false }): RoomDue {
   const agents = Object.values(state.agents)
   const helpers = agents.some(agent => agent.kind === 'helper' && agent.phase !== 'finished')
   const busy = helpers || agents.some(agent => ownWork(agent) && BUSY.has(agent.phase))
@@ -171,9 +212,20 @@ export function roomDue(state: RoomState, clock: RoomClock, paused: ReadonlySet<
     sessions,
     automations: state.caps.automations ? automations : Infinity,
     runs: state.caps.automations ? runsDue(agents, clock) : {},
-    elsewhere: options.elsewhere && state.caps.sessionsDb ? (clock.elsewhereAt === null ? 0 : clock.elsewhereAt + ROOM_TIMING.elsewhereMs) : Infinity,
+    elsewhere: options.elsewhere && state.caps.sessionsDb ? readDue(clock.elsewhereAt, clock.elsewhereWanted, ROOM_TIMING.elsewhereMs, ROOM_TIMING.elsewhereFloorMs) : Infinity,
+    // Costs are matched to the sessions the list brings, so they wait for it.
+    costs: options.costs && state.caps.sessionsDb && !waitForList ? readDue(clock.costsAt, clock.costsWanted, ROOM_TIMING.costsMs, ROOM_TIMING.costsFloorMs) : Infinity,
     desks: clock.desksAt === null ? 0 : clock.desksAt + (atDesks ? ROOM_TIMING.desksBusyMs : ROOM_TIMING.desksQuietMs)
   }
+}
+
+/** One of Herald's sessions finished a turn between two states: its cost has just changed. */
+export function turnEnded(before: RoomState, after: RoomState): boolean {
+  return Object.values(after.agents).some(agent => {
+    const was = before.agents[agent.id]
+
+    return agent.id.startsWith('s:') && agent.phase === 'idle' && was !== undefined && SESSION_BUSY.has(was.phase)
+  })
 }
 
 /** The earliest due time among calls not already in flight. Runs are read with the automations, so they wait while those are in flight. */
@@ -184,6 +236,7 @@ export function earliestDue(due: RoomDue, inflight: RoomInflight): number {
     inflight.config ? Infinity : due.config,
     inflight.automations ? Infinity : Math.min(due.automations, ...Object.values(due.runs)),
     inflight.elsewhere ? Infinity : due.elsewhere,
+    inflight.costs ? Infinity : due.costs,
     inflight.desks ? Infinity : due.desks
   ]
 

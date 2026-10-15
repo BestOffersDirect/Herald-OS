@@ -1,8 +1,11 @@
+import type { RoomActivity } from '../../../../shared/room.ts'
 import { describeTool } from './areas.ts'
 import { automationOf, type RoomCronJob, type RoomCronRun } from './automations.ts'
+import { helperUsage, type RoomCostRow, sameUsage, sessionUsage, tokensOf, usageOfRow } from './costs.ts'
 import { type DeskPick, deskFor } from './desks.ts'
 import type { RoomElsewhereRow } from './elsewhere.ts'
 import type { RoomFrame, RoomHelperRecord, RoomRequest, RoomSessionRow } from './frames.ts'
+import { deriveOutside, dropLive, freshEvents, hasLiveDetail, heraldWork, isHeraldWork, keepsLive, outsideAgentId, outsideLane, staleAt, takeActivity } from './outside.ts'
 import { stepOf } from './steps.ts'
 import type {
   RoomAgent,
@@ -19,7 +22,8 @@ import type {
   RoomSessionMeta,
   RoomSource,
   RoomState,
-  RoomTrace
+  RoomTrace,
+  RoomUsage
 } from './types.ts'
 
 /*
@@ -73,6 +77,12 @@ export type RoomInput =
   | { type: 'automations'; jobs: RoomCronJob[]; runs: Record<string, RoomCronRun | null>; at: number }
   /** The elsewhere lane's rows, already filtered; null when the lane is off. */
   | { type: 'elsewhere'; rows: RoomElsewhereRow[] | null; at: number }
+  /** Live activity from Hermes outside Herald, as main hands it over while the person has live detail on. */
+  | { type: 'outside'; events: RoomActivity[]; at: number }
+  /** Live detail was turned off: work outside Herald goes back to the lane's coarse view. */
+  | { type: 'outside_off'; at: number }
+  /** Rows of Herald's own sessions from the session database, for cost meters. */
+  | { type: 'costs'; rows: RoomCostRow[]; at: number }
   | { type: 'desks'; desks: RoomDesk[]; at: number }
   /** Recent Office and Canvas commands agents ran, newest first. */
   | { type: 'commands'; commands: RoomCommand[]; at: number }
@@ -125,7 +135,11 @@ function emptyBasis(): RoomBasis {
     idleSince: null,
     childSessionId: null,
     listed: false,
-    missing: 0
+    missing: 0,
+    approvals: [],
+    counts: null,
+    turnTokens: null,
+    costRow: null
   }
 }
 
@@ -154,6 +168,7 @@ function newAgent(id: string, kind: RoomKind, sessionId: string, trace: RoomTrac
     desk: null,
     automation: null,
     elsewhere: null,
+    usage: null,
     trace: {},
     basis: emptyBasis()
   }
@@ -185,7 +200,7 @@ function edit(work: Work, id: string): RoomAgent | null {
 
   if (!work.copied.has(id)) {
     const basis = agent.basis ?? emptyBasis()
-    work.agents[id] = { ...agent, trace: { ...agent.trace }, basis: { ...basis, tools: [...basis.tools] } }
+    work.agents[id] = { ...agent, trace: { ...agent.trace }, basis: { ...basis, tools: [...basis.tools], approvals: [...basis.approvals] } }
     work.copied.add(id)
   }
 
@@ -220,7 +235,7 @@ function fieldValue(agent: RoomAgent, field: RoomField): unknown {
     case 'parent':
       return agent.parentId
     case 'approval':
-      return agent.approval?.requestId ?? null
+      return agent.approval?.requestId ?? (agent.elsewhere?.approval ? 'elsewhere' : null)
     case 'repeat':
       return agent.repeat ? `${agent.repeat.signature}#${agent.repeat.count}` : null
     case 'guardrail':
@@ -235,7 +250,7 @@ function fieldValue(agent: RoomAgent, field: RoomField): unknown {
     case 'elsewhere': {
       const lane = agent.elsewhere
 
-      return lane ? `${lane.where}:${lane.active}:${lane.lastActiveAt}` : null
+      return lane ? `${lane.where}:${lane.active}:${lane.lastActiveAt}:${lane.approval}` : null
     }
     case 'lastEventAt':
       return agent.lastEventAt
@@ -331,15 +346,6 @@ function deriveAutomation(agent: RoomAgent): void {
   agent.step = running ? 'running' : null
 }
 
-/** Work elsewhere stays in its lane, with no step: the session database says only whether it is active. */
-function deriveElsewhere(agent: RoomAgent): void {
-  agent.phase = agent.elsewhere?.active ? 'thinking' : 'idle'
-  agent.area = 'elsewhere'
-  agent.target = null
-  agent.tool = null
-  agent.step = null
-}
-
 /** Work out the derived fields, then trace whatever changed to the input that changed it. */
 function settle(agent: RoomAgent, before: RoomAgent | undefined, trace: RoomTrace, isFrame: boolean): void {
   const basis = basisOf(agent)
@@ -353,7 +359,7 @@ function settle(agent: RoomAgent, before: RoomAgent | undefined, trace: RoomTrac
       deriveAutomation(agent)
       break
     case 'elsewhere':
-      deriveElsewhere(agent)
+      deriveOutside(agent, basis)
       break
     default:
       deriveSession(agent, basis)
@@ -400,6 +406,14 @@ function addHandoff(work: Work, kind: RoomHandoff['kind'], from: string | null, 
   }
 }
 
+/** Usage is traced on its own: a cost read is news about the money, not about what the agent is doing, so it leaves `lastEventAt` alone. */
+function setUsage(agent: RoomAgent, usage: RoomUsage | null, trace: RoomTrace): void {
+  if (!sameUsage(agent.usage, usage)) {
+    agent.usage = usage
+    agent.trace.usage = trace
+  }
+}
+
 function frameTrace(frame: RoomFrame, at: number): RoomTrace {
   return traceOf('frame', frame.event, at, frame.seq)
 }
@@ -428,6 +442,7 @@ function applySessionFrame(work: Work, frame: Exclude<RoomFrame, { type: 'subage
       basis.turnArea = null
       basis.turnTarget = null
       basis.turnFront = false
+      basis.turnTokens = tokensOf(basis.counts)
       agent.turnStartedAt = backfill ? null : trace.at
       agent.repeat = null
       agent.guardrail = null
@@ -438,7 +453,15 @@ function applySessionFrame(work: Work, frame: Exclude<RoomFrame, { type: 'subage
       }
 
       basis.tools = []
+      basis.counts = frame.usage ?? basis.counts
       agent.turnStartedAt = null
+      break
+    case 'usage':
+      if (fresh && basis.status !== 'working' && basis.status !== 'starting') {
+        setStatus(agent, 'working', evidenceAt, known)
+      }
+
+      basis.counts = frame.usage
       break
     case 'tool.start': {
       const step = describeTool(frame.call, { cwd: basis.cwd, area: agent.area, target: agent.target })
@@ -531,6 +554,10 @@ function applySessionFrame(work: Work, frame: Exclude<RoomFrame, { type: 'subage
       break
   }
 
+  if (frame.type === 'message.start' || frame.type === 'message.complete' || frame.type === 'usage') {
+    setUsage(agent, sessionUsage(basis.counts, basis.turnTokens, basis.costRow, trace.at), trace)
+  }
+
   settle(agent, before, trace, true)
 }
 
@@ -596,6 +623,7 @@ function applyHelperFrame(work: Work, frame: Extract<RoomFrame, { type: 'subagen
           at: trace.at
         }
       : null
+    setUsage(agent, agent.result ? helperUsage(agent.result) : null, trace)
     addHandoff(work, 'result', id, agent.parentId, trace)
   } else if (agent.phase !== 'finished') {
     switch (frame.stage) {
@@ -946,6 +974,11 @@ function applyAutomations(work: Work, input: Extract<RoomInput, { type: 'automat
     listed.add(id)
     agent.title = job.name
     agent.automation = automationOf(job, read ? input.runs[job.key] : undefined, agent.automation)
+
+    if (read) {
+      setUsage(agent, usageOfRow(input.runs[job.key]?.usage ?? null, input.at), trace)
+    }
+
     settle(agent, before, trace, false)
   }
 
@@ -956,6 +989,9 @@ function applyAutomations(work: Work, input: Extract<RoomInput, { type: 'automat
   }
 }
 
+const latest = (a: number | null, b: number | null): number | null => (a === null ? b : b === null ? a : Math.max(a, b))
+
+/** The lane's read names its work and says how active it is; live detail on it stays, and so does live work the list no longer has. */
 function applyElsewhere(work: Work, input: Extract<RoomInput, { type: 'elsewhere' }>): void {
   const trace = traceOf('sessions_db', 'GET /api/sessions', input.at)
   const listed = new Set<string>()
@@ -964,20 +1000,162 @@ function applyElsewhere(work: Work, input: Extract<RoomInput, { type: 'elsewhere
     const id = elsewhereAgentId(row.id)
     const before = beforeOf(work, id)
     const agent = edit(work, id) ?? add(work, newAgent(id, 'elsewhere', '', trace))
+    const lane = agent.elsewhere
 
     listed.add(id)
     agent.sessionKey = row.id
     agent.title = row.title
     agent.startedAt = row.startedAt
-    agent.elsewhere = { where: row.where, active: row.active, lastActiveAt: row.lastActiveAt }
+    agent.elsewhere = { where: row.where, active: row.active, lastActiveAt: latest(row.lastActiveAt, lane?.lastActiveAt ?? null), approval: lane?.approval ?? false, liveAt: lane?.liveAt ?? null }
+    setUsage(agent, usageOfRow(row.usage, input.at), trace)
     settle(agent, before, trace, false)
   }
 
   for (const [id, agent] of Object.entries(work.agents)) {
-    if (agent.kind === 'elsewhere' && !listed.has(id)) {
+    if (agent.kind === 'elsewhere' && !listed.has(id) && !(input.rows && keepsLive(agent, input.at))) {
       delete work.agents[id]
     }
   }
+}
+
+/** Herald's own sessions' rows from the session database: what each used and cost. */
+function applyCosts(work: Work, input: Extract<RoomInput, { type: 'costs' }>): void {
+  const trace = traceOf('sessions_db', 'GET /api/sessions', input.at)
+  const rows = new Map(input.rows.map(row => [row.id, row]))
+
+  for (const agent of Object.values(work.agents)) {
+    const row = isSession(agent) && agent.sessionKey ? rows.get(agent.sessionKey) : undefined
+    const known = agent.basis?.costRow
+
+    if (!row || (known && known.input === row.input && known.output === row.output && known.costUsd === row.costUsd && known.costStatus === row.costStatus)) {
+      continue
+    }
+
+    const editing = edit(work, agent.id)!
+    const basis = basisOf(editing)
+    basis.costRow = { input: row.input, output: row.output, costUsd: row.costUsd, costStatus: row.costStatus }
+    setUsage(editing, sessionUsage(basis.counts, basis.turnTokens, basis.costRow, input.at), trace)
+  }
+}
+
+function outsideAgent(id: string, event: RoomActivity, trace: RoomTrace): RoomAgent {
+  const agent = newAgent(id, 'elsewhere', '', trace)
+  agent.elsewhere = outsideLane(event.source, event.at)
+
+  return agent
+}
+
+/** helper.start: the helper comes in as work outside Herald of its own, with a note from the agent that started it. */
+function startOutsideHelper(work: Work, parent: RoomAgent, event: RoomActivity, child: string, trace: RoomTrace, receivedAt: number): void {
+  const id = outsideAgentId(child)
+  const before = beforeOf(work, id)
+  const known = edit(work, id)
+  const helper = known ?? add(work, newAgent(id, 'elsewhere', '', trace))
+
+  helper.parentId = parent.id
+
+  if (!known) {
+    const lane = outsideLane(event.source, event.at)
+    helper.elsewhere = { ...lane, where: parent.elsewhere?.where ?? lane.where }
+
+    if (receivedAt - event.at < HANDOFF_KEEP_MS) {
+      addHandoff(work, 'note', parent.id, id, trace)
+    }
+  }
+
+  takeActivity(helper, basisOf(helper), event)
+  settle(helper, before, trace, true)
+}
+
+/** helper.end: the helper finishes and walks its result back, unless it ended before the Room could have shown it. */
+function endOutsideHelper(work: Work, event: RoomActivity, child: string, trace: RoomTrace, receivedAt: number): void {
+  const id = outsideAgentId(child)
+  const known = work.agents[id]
+
+  if (!known || known.phase === 'finished') {
+    return
+  }
+
+  if (receivedAt - event.at >= FINISHED_KEEP_MS) {
+    delete work.agents[id]
+
+    return
+  }
+
+  const before = beforeOf(work, id)
+  const helper = edit(work, id)!
+  takeActivity(helper, basisOf(helper), event)
+  settle(helper, before, trace, true)
+  addHandoff(work, 'result', id, helper.parentId, trace)
+}
+
+/** One event from outside Herald; an agent it addresses that the lane does not show yet comes in at once. */
+function applyActivity(work: Work, event: RoomActivity, receivedAt: number): void {
+  const id = outsideAgentId(event.session)
+  const trace = traceOf('activity', event.kind, event.at, event.seq)
+
+  // A helper's own session whose start the Room never saw: nothing says whose it is.
+  if (!work.agents[id] && event.source === 'tool') {
+    return
+  }
+
+  if (event.kind === 'helper.end') {
+    if (event.child) {
+      endOutsideHelper(work, event, event.child, trace, receivedAt)
+    }
+
+    return
+  }
+
+  const before = beforeOf(work, id)
+  const agent = edit(work, id) ?? add(work, outsideAgent(id, event, trace))
+  takeActivity(agent, basisOf(agent), event)
+  settle(agent, before, trace, true)
+
+  if (event.kind === 'helper.start' && event.child) {
+    startOutsideHelper(work, agent, event, event.child, trace, receivedAt)
+  }
+}
+
+/** The events not taken in yet, in main's order, leaving out Herald's own work; returns the highest seq taken in. */
+function applyOutside(work: Work, input: Extract<RoomInput, { type: 'outside' }>, seen: number): number {
+  const herald = heraldWork(work.agents)
+  let last = seen
+
+  for (const event of freshEvents(input.events, seen)) {
+    last = event.seq
+
+    if (!isHeraldWork(event, herald)) {
+      applyActivity(work, event, input.at)
+    }
+  }
+
+  return last
+}
+
+/** Live detail turned off: work outside Herald back to the lane's coarse view, and its helpers gone. */
+function dropOutside(work: Work, at: number): boolean {
+  const trace = traceOf('activity', 'live.off', at)
+  let changed = false
+
+  for (const [id, agent] of Object.entries(work.agents)) {
+    if (!hasLiveDetail(agent)) {
+      continue
+    }
+
+    if (agent.parentId) {
+      delete work.agents[id]
+    } else {
+      const before = beforeOf(work, id)
+      const editing = edit(work, id)!
+      dropLive(editing, basisOf(editing))
+      settle(editing, before, trace, false)
+    }
+
+    changed = true
+  }
+
+  return changed
 }
 
 const sameDesks = (a: Record<string, RoomDesk>, b: readonly RoomDesk[]): boolean => {
@@ -1092,6 +1270,11 @@ function finishedAt(agent: RoomAgent): number {
 export function nextPruneAt(state: RoomState): number | null {
   const times = [
     ...Object.values(state.agents).flatMap(agent => (agent.phase === 'finished' ? [finishedAt(agent) + FINISHED_KEEP_MS] : [])),
+    ...Object.values(state.agents).flatMap(agent => {
+      const stale = staleAt(agent)
+
+      return stale === null ? [] : [stale]
+    }),
     ...state.handoffs.map(handoff => handoff.at + HANDOFF_KEEP_MS),
     ...Object.values(state.answered ?? {}).map(at => at + ANSWERED_KEEP_MS)
   ]
@@ -1108,10 +1291,26 @@ function prune(state: RoomState, now: number): RoomState {
   let changed = false
 
   for (const [id, agent] of Object.entries(work.agents)) {
+    const silent = staleAt(agent)
+
+    if (silent !== null && now >= silent) {
+      if (agent.parentId) {
+        delete work.agents[id]
+      } else {
+        const before = beforeOf(work, id)
+        const editing = edit(work, id)!
+        dropLive(editing, basisOf(editing))
+        settle(editing, before, traceOf('activity', 'live.stale', now), false)
+      }
+
+      changed = true
+      continue
+    }
+
     const stale = agent.phase === 'finished' ? now - finishedAt(agent) >= FINISHED_KEEP_MS : !state.caps.activeList && isSession(agent) && agent.phase === 'idle' && now - agent.lastEventAt >= UNLISTED_IDLE_KEEP_MS
 
     if (stale && work.agents[id]) {
-      if (isHelper(agent)) {
+      if (isHelper(agent) || agent.kind === 'elsewhere') {
         delete work.agents[id]
       } else {
         dropSession(work, id)
@@ -1219,6 +1418,26 @@ export function reduceRoom(state: RoomState, input: RoomInput): RoomState {
       applyElsewhere(work, input)
 
       return { ...finish(state, work, input.at, input.rows !== null), elsewhereOn: input.rows !== null, elsewhereAt: input.rows ? input.at : undefined }
+    }
+    case 'outside': {
+      const seen = state.outsideSeq ?? 0
+      const work = begin(state)
+      const last = applyOutside(work, input, seen)
+
+      // `updatedAt` says Herald's own backend has answered, which settles the scene; activity from outside says nothing of that.
+      return last === seen ? state : { ...finish(state, work, input.at, false), outsideSeq: last }
+    }
+    case 'outside_off': {
+      const work = begin(state)
+
+      // Turning live detail on again replays what main heard in the last minutes, from the start.
+      return dropOutside(work, input.at) || state.outsideSeq !== undefined ? { ...finish(state, work, input.at, false), outsideSeq: undefined } : state
+    }
+    case 'costs': {
+      const work = begin(state)
+      applyCosts(work, input)
+
+      return work.copied.size ? finish(state, work, input.at, true) : state
     }
     case 'desks': {
       if (sameDesks(state.desks ?? {}, input.desks)) {

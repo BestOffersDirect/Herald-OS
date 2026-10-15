@@ -96,6 +96,13 @@ describe('a session through a turn', () => {
     expect(view(state)).toMatchObject({ phase: 'waiting', area: 'bench', step: 'waiting for you in Hermes' })
   })
 
+  it('counts the usage ticks Hermes sends while a turn runs as a turn at work', () => {
+    const state = fold(list([{ id: 'live-1' }], T0), live(f('session.usage', { usage: { input: 10, output: 2 } }), T0 + 10))
+
+    expect(view(state)).toEqual({ phase: 'thinking', area: 'lounge', target: null, step: 'thinking', tool: null })
+    expect(agentOf(state).lastEventAt).toBe(T0 + 10)
+  })
+
   it('takes the turn start from session.info', () => {
     const state = fold(live(f('session.info', { running: true, turn_started_at: 1_700_000_000 }), T0))
 

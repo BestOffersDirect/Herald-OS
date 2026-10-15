@@ -12,8 +12,8 @@ const UNTITLED: Record<RoomKind, string> = { conversation: 'A conversation', mis
 export const KIND_NAMES: Record<RoomKind, string> = { conversation: 'Conversation', mission: 'Mission', helper: 'Helper', automation: 'Automation', elsewhere: 'Outside Herald' }
 
 /** The agent's title, or what it is when Hermes has not named it yet. */
-export function agentTitle(agent: Pick<RoomAgent, 'title' | 'kind'>): string {
-  return agent.title.trim() || UNTITLED[agent.kind]
+export function agentTitle(agent: Pick<RoomAgent, 'title' | 'kind'> & Partial<Pick<RoomAgent, 'parentId'>>): string {
+  return agent.title.trim() || (agent.kind === 'elsewhere' && agent.parentId ? 'A helper outside Herald' : UNTITLED[agent.kind])
 }
 
 /** A step label as a bubble shows it: first letter capitalised. */
@@ -66,9 +66,13 @@ const RESULT_DOING: Record<RoomResult['status'], string> = {
 }
 
 /** What the agent is doing, in a few words: its step when it has one. */
-export function doingText(agent: Pick<RoomAgent, 'phase' | 'step' | 'approval' | 'asking' | 'result'>): string {
+export function doingText(agent: Pick<RoomAgent, 'phase' | 'step' | 'approval' | 'asking' | 'result'> & Partial<Pick<RoomAgent, 'elsewhere'>>): string {
   if (agent.approval) {
     return 'waiting for your OK'
+  }
+
+  if (agent.elsewhere?.approval) {
+    return `waiting for your OK in ${agent.elsewhere.where}`
   }
 
   if (agent.phase === 'finished') {
@@ -92,10 +96,11 @@ export function sameFacts(a: readonly RoomFact[], b: readonly RoomFact[]): boole
 }
 
 /** The facts a name tag shows: not the approval the sign already shows, nor the words of the bubble over it. */
-export function tagFacts(agent: Pick<RoomAgent, 'approval'>, facts: readonly RoomFact[], bubble: string | null): RoomFact[] {
+export function tagFacts(agent: Pick<RoomAgent, 'approval'> & Partial<Pick<RoomAgent, 'elsewhere'>>, facts: readonly RoomFact[], bubble: string | null): RoomFact[] {
   const said = bubble?.toLowerCase() ?? null
+  const signed = Boolean(agent.approval || agent.elsewhere?.approval)
 
-  return facts.filter(fact => !(agent.approval && fact.kind === 'waiting') && fact.text.toLowerCase() !== said)
+  return facts.filter(fact => !(signed && fact.kind === 'waiting') && fact.text.toLowerCase() !== said)
 }
 
 export type CountId = 'working' | 'waiting' | 'idle' | 'helpers' | 'automations' | 'elsewhere'
@@ -156,5 +161,19 @@ export function roomNotices({ connected, state, pets }: { connected: boolean; st
 export const EMPTY_ROOM_TEXT = 'No Hermes work right now. Pets come in when Hermes starts working in Herald.'
 
 export const EMPTY_LANE_TEXT = 'No Hermes work outside Herald in the last hour.'
+
+/** The lane's note under its name, and its tooltip: coarse from the session list, or with live steps while live detail is on. */
+export function laneWords(live: boolean): { note: string; about: string } {
+  return live
+    ? {
+        note: 'Live steps from Hermes in each app',
+        about:
+          "Hermes work outside Herald: titles and activity from Hermes's session list once a minute, and the tool each piece of work uses, the helpers it starts and the approvals it waits on, by name only, from Herald's bridge plugin in each Hermes process. Approvals there are answered there."
+      }
+    : {
+        note: 'Coarse: titles and activity, read once a minute',
+        about: "Hermes work outside Herald, from Hermes's session list: titles and whether each is active, read once a minute. The room shows no steps for it."
+      }
+}
 
 export const moreText = (count: number): string => `+${count} more`

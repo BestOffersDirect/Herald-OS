@@ -1,8 +1,9 @@
-import { IconEyeOff, IconPaw, IconPlugConnectedX, IconRefreshAlert } from '@tabler/icons-react'
+import { IconEyeOff, IconHistory, IconPaw, IconPlugConnectedX, IconRefreshAlert } from '@tabler/icons-react'
 import type { ComponentType } from 'react'
 import { AppTile } from '../../../components/app-icon.tsx'
-import { Pill, type PillTone } from '../../../components/ui/glass.tsx'
+import { GlassButton, Pill, type PillTone } from '../../../components/ui/glass.tsx'
 import { cn } from '../../../lib/cn.ts'
+import type { RoomMeter } from '../model/costs.ts'
 import type { RoomSummary } from '../model/summary.ts'
 import { type CountId, countsOf, type RoomNotice, type RoomNoticeId } from './labels.ts'
 
@@ -15,8 +16,20 @@ const NOTICE_ICONS: Record<RoomNoticeId, ComponentType<{ size?: number; classNam
   noPets: IconPaw
 }
 
-/** The Room's title, what is under way, and what keeps it from showing everything. */
-export function RoomHeader({ summary, notices, onPetSettings }: { summary: RoomSummary | null; notices: readonly RoomNotice[]; onPetSettings?: () => void }) {
+/** The Room's title, what is under way, the cost meters' total when the person shows it, the time-lapse when there is a log, and what keeps the Room from showing everything. */
+export function RoomHeader({
+  summary,
+  notices,
+  total = null,
+  onPetSettings,
+  onTimeLapse
+}: {
+  summary: RoomSummary | null
+  notices: readonly RoomNotice[]
+  total?: RoomMeter | null
+  onPetSettings?: () => void
+  onTimeLapse?: () => void
+}) {
   const counts = summary ? countsOf(summary) : []
 
   return (
@@ -30,6 +43,19 @@ export function RoomHeader({ summary, notices, onPetSettings }: { summary: RoomS
               {count.text}
             </Pill>
           ))}
+          {total && (
+            <span title={total.title} className="flex">
+              <Pill tone="muted" className="tabular-nums">
+                {total.text}
+              </Pill>
+            </span>
+          )}
+          {onTimeLapse && (
+            <GlassButton size="sm" variant="ghost" onClick={onTimeLapse} title="Play back a day from the activity log">
+              <IconHistory />
+              Time-lapse
+            </GlassButton>
+          )}
         </div>
       </div>
       {notices.length > 0 && (

@@ -1,5 +1,6 @@
 import { shortName } from './areas.ts'
-import type { RoomAutomation } from './types.ts'
+import { rowUsage } from './costs.ts'
+import type { RoomAutomation, RoomRowUsage } from './types.ts'
 
 /*
  * Herald's automations, as the Automations page reads them: cron jobs from `/api/cron/jobs` and
@@ -25,13 +26,15 @@ export interface RoomCronJob {
   claimed: boolean
 }
 
-/** A job's latest run: when it started and ended, and whether Hermes counts it as still going. */
+/** A job's latest run: when it started and ended, whether Hermes counts it as still going, and what it used. */
 export interface RoomCronRun {
   id: string
   startedAt: number | null
   endedAt: number | null
   active: boolean
   failed: boolean
+  /** Its token counts and cost, as for any session row; shown only with cost meters on. */
+  usage: RoomRowUsage | null
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -86,7 +89,7 @@ export function roomCronJob(raw: unknown): RoomCronJob | null {
   }
 }
 
-/** A run row from `/api/cron/jobs/{id}/runs`: times and Hermes's own `is_active`, never its title or preview. */
+/** A run row from `/api/cron/jobs/{id}/runs`: times, Hermes's own `is_active` and its token counts and cost, never its title or preview. */
 export function roomCronRun(raw: unknown): RoomCronRun | null {
   const run = record(raw)
   const id = text(run.id)
@@ -95,7 +98,7 @@ export function roomCronRun(raw: unknown): RoomCronRun | null {
     return null
   }
 
-  return { id, startedAt: timeOf(run.started_at), endedAt: timeOf(run.ended_at), active: run.is_active === true, failed: failed(run.end_reason) }
+  return { id, startedAt: timeOf(run.started_at), endedAt: timeOf(run.ended_at), active: run.is_active === true, failed: failed(run.end_reason), usage: rowUsage(run) }
 }
 
 /** What the job's records say changed: a job that moves is read again, as a run may have started or ended. */

@@ -1,5 +1,6 @@
 import { meetingOf } from './desks.ts'
 import type { RoomGuardrailCode } from './frames.ts'
+import { busyOutside } from './outside.ts'
 import type { RoomAgent, RoomElsewhere, RoomFact, RoomPhase, RoomResult, RoomState } from './types.ts'
 
 /** A turn with nothing new for this long is quiet. */
@@ -81,6 +82,28 @@ export function activityText(lane: RoomElsewhere, at: number): string {
   return `${lane.where} · ${how}`
 }
 
+/** Work outside Herald: where it runs and how active it is, an approval waiting in that app, how a helper there ended, and a turn gone quiet. */
+function outsideFacts(agent: RoomAgent, state: RoomState, now: number): RoomFact[] {
+  const lane = agent.elsewhere
+  const facts: RoomFact[] = []
+
+  if (lane?.approval) {
+    facts.push({ kind: 'waiting', text: `waiting for your OK in ${lane.where}`, trace: agent.trace.approval ?? null })
+  }
+
+  if (agent.phase === 'finished') {
+    facts.push({ kind: 'result', text: agent.result ? RESULT_TEXT[agent.result.status] : 'finished', trace: agent.trace.result ?? agent.trace.phase ?? null })
+  } else if (lane) {
+    facts.push({ kind: 'activity', text: activityText(lane, state.elsewhereAt ?? now), trace: agent.trace.elsewhere ?? null })
+  }
+
+  if (busyOutside(agent) && TURN_PHASES.has(agent.phase) && now - agent.lastEventAt >= QUIET_AFTER_MS) {
+    facts.push({ kind: 'quiet', text: `quiet for ${spanOf(now - agent.lastEventAt)} during a turn`, trace: agent.trace.lastEventAt ?? null })
+  }
+
+  return facts
+}
+
 /** "2 agents on Launch plan.docx": agents at one desk, or on one document in an area with desks. */
 function meetingFact(agent: RoomAgent, state: RoomState): RoomFact | null {
   const met = meetingOf(agent, Object.values(state.agents))
@@ -101,7 +124,7 @@ export function factsOf(agent: RoomAgent, state: RoomState, now: number): RoomFa
   }
 
   if (agent.kind === 'elsewhere') {
-    return agent.elsewhere ? [{ kind: 'activity', text: activityText(agent.elsewhere, state.elsewhereAt ?? now), trace: agent.trace.elsewhere ?? null }] : []
+    return outsideFacts(agent, state, now)
   }
 
   const facts: RoomFact[] = []

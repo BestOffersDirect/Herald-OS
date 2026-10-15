@@ -8,6 +8,7 @@ import { cn } from '../../../lib/cn.ts'
 import type { PetAssignment } from '../../petdex/assign.ts'
 import { spriteCache } from '../../petdex/cache.ts'
 import { petClock } from '../../petdex/clock.ts'
+import type { RoomMeter } from '../model/costs.ts'
 import type { RoomSummary } from '../model/summary.ts'
 import type { RoomAgent, RoomDesk, RoomFact, RoomHandoff } from '../model/types.ts'
 import { AgentOverlay } from './AgentOverlay.tsx'
@@ -41,6 +42,8 @@ export interface RoomSceneProps {
   deskNames?: boolean
   /** The lane for work outside Herald, which the person turned on. */
   lane?: boolean
+  /** The lane shows live steps, which the person turned on as well. */
+  laneLive?: boolean
   /** Name tags, facts, Hermes's result summaries and the words on the furniture; off for a screensaver. */
   names?: boolean
   /** Pets open their conversations and signs open the approval card; off for a screensaver, which only ever shows. */
@@ -49,9 +52,15 @@ export interface RoomSceneProps {
   chrome?: boolean
   summary?: RoomSummary | null
   notices?: readonly RoomNotice[]
+  /** A token and cost meter on each name tag; off unless the person turns meters on, and never in a screensaver. */
+  meters?: boolean
+  /** The meters' total in the header, when the person shows it. */
+  total?: RoomMeter | null
   onOpen: (agentId: string) => void
   onAnswer: (agentId: string, choice: ApprovalChoice) => void
   onPetSettings?: () => void
+  /** Opens the time-lapse; the header offers it only when this is given. */
+  onTimeLapse?: () => void
   className?: string
 }
 
@@ -154,14 +163,18 @@ export function RoomScene({
   desks = NO_DESKS,
   deskNames = true,
   lane = false,
+  laneLive = false,
   names = true,
   interactive = true,
   chrome = true,
   summary = null,
   notices = [],
+  meters = false,
+  total = null,
   onOpen,
   onAnswer,
   onPetSettings,
+  onTimeLapse,
   className
 }: RoomSceneProps) {
   const key = `room-scene:${useId()}`
@@ -198,7 +211,7 @@ export function RoomScene({
   const visible = shown.filter(agent => !marks.gone.has(agent.id))
   const raised = interactive && sign ? (visible.find(agent => agent.id === sign.id && agent.approval?.requestId === sign.requestId) ?? null) : null
   const raisedId = raised?.id ?? null
-  const ownWork = agents.some(agent => agent.kind !== 'elsewhere' && !(agent.kind === 'automation' && agent.phase === 'idle'))
+  const inRoom = agents.some(agent => !inLane(agent) && !(agent.kind === 'automation' && agent.phase === 'idle'))
   const laneEmpty = lane && !agents.some(inLane)
 
   useEffect(() => {
@@ -355,9 +368,9 @@ export function RoomScene({
 
   return (
     <div className={cn('relative flex h-full w-full flex-col overflow-hidden text-fg', className)}>
-      {chrome && <RoomHeader summary={summary} notices={notices} onPetSettings={onPetSettings} />}
+      {chrome && <RoomHeader summary={summary} notices={notices} total={total} onPetSettings={onPetSettings} onTimeLapse={onTimeLapse} />}
       <div ref={floorRef} className="relative min-h-0 flex-1 overflow-hidden">
-        {layout && <RoomBackdrop layout={layout} glowing={glowing} still={still} deskNames={deskNames && names} words={names} />}
+        {layout && <RoomBackdrop layout={layout} glowing={glowing} still={still} deskNames={deskNames && names} words={names} laneLive={laneLive} />}
         <canvas ref={canvasRef} aria-hidden="true" className="pointer-events-none absolute top-0 left-0" style={layout ? { width: layout.width, height: layout.height } : undefined} />
         {layout && (
           <div className="pointer-events-none absolute inset-0">
@@ -369,7 +382,8 @@ export function RoomScene({
                 facts={facts[agent.id] ?? NO_FACTS}
                 steps={steps}
                 names={names}
-                interactive={interactive && !inLane(agent)}
+                interactive={interactive && agent.kind !== 'elsewhere'}
+                meters={meters}
                 marks={marks.marks[agent.id] ?? null}
                 still={still}
                 signOpen={raised?.id === agent.id}
@@ -394,7 +408,7 @@ export function RoomScene({
             ))}
           </div>
         )}
-        {layout && names && settled && !ownWork && (
+        {layout && names && settled && !inRoom && (
           <div className="pointer-events-none absolute left-0 flex items-center justify-center px-6" style={{ width: layout.wall.width, top: layout.wall.height, bottom: layout.height - layout.door.y }}>
             <div className={cn('glass-card flex max-w-sm flex-col items-center gap-2.5 rounded-2xl px-6 py-5 text-center', !still && 'animate-rise')}>
               <span className="icon-tile size-10">
