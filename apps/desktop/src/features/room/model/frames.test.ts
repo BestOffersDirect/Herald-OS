@@ -5,35 +5,35 @@ import { EMPTY_ROOM, reduceRoom, type RoomInput } from './reducer.ts'
 import { factsOf } from './facts.ts'
 import { summarizeRoom } from './summary.ts'
 
-const SECRET = 'SECRET-MARKER-7f3a'
+const MARKER = 'private-marker-7f3a'
 
 const raw = (type: string, seq: number, payload: Record<string, unknown> = {}, sessionId = 'live-1') => ({ type, session_id: sessionId, seq, payload })
 
 describe('frames are cut down on arrival', () => {
   it('keeps nothing of text, thinking, arguments, previews, results, status lines or todo items', () => {
     const frames = [
-      raw('session.info', 1, { running: true, cwd: `/Users/me/${SECRET}/herald`, title: 'Budget review', stored_session_id: 'stored-1', tools: { all: [SECRET] }, usage: { note: SECRET } }),
-      raw('message.start', 2, { text: SECRET }),
-      raw('reasoning.delta', 3, { text: SECRET }),
-      raw('thinking.delta', 4, { text: SECRET }),
-      raw('message.delta', 5, { text: SECRET }),
+      raw('session.info', 1, { running: true, cwd: `/Users/me/${MARKER}/herald`, title: 'Budget review', stored_session_id: 'stored-1', tools: { all: [MARKER] }, usage: { note: MARKER } }),
+      raw('message.start', 2, { text: MARKER }),
+      raw('reasoning.delta', 3, { text: MARKER }),
+      raw('thinking.delta', 4, { text: MARKER }),
+      raw('message.delta', 5, { text: MARKER }),
       raw('tool.start', 6, {
         tool_id: 't1',
         name: 'terminal',
-        context: SECRET,
-        args: { command: `echo ${SECRET}`, workdir: '/home/me/project' },
-        labels: [{ kind: 'tool', app: '', action: '', emoji: '', text: SECRET, name: 'terminal', preview: SECRET }]
+        context: MARKER,
+        args: { command: `echo ${MARKER}`, workdir: '/home/me/project' },
+        labels: [{ kind: 'tool', app: '', action: '', emoji: '', text: MARKER, name: 'terminal', preview: MARKER }]
       }),
-      raw('tool.complete', 7, { tool_id: 't1', name: 'terminal', summary: SECRET, result: SECRET, result_text: SECRET, inline_diff: SECRET }),
-      raw('tool.start', 8, { tool_id: 't2', name: 'write_file', context: SECRET, args: { path: `/tmp/${SECRET}/notes.md`, content: SECRET } }),
-      raw('tool.start', 9, { tool_id: 't3', name: 'browser_navigate', args: { url: `https://me:${SECRET}@example.com/${SECRET}?q=${SECRET}` } }),
-      raw('tool.start', 10, { tool_id: 't4', name: 'tool_call', args: { query: SECRET }, labels: [{ kind: 'connector', app: 'Gmail', action: 'send', emoji: '', text: SECRET, name: 'gmail_send', preview: SECRET }] }),
-      raw('status.update', 11, { kind: 'status', text: SECRET }),
-      raw('todo.updated', 12, { todos: [{ content: SECRET, status: 'pending' }], revision: 1 }),
-      raw('subagent.spawn_requested', 13, { subagent_id: 'sa1', goal: 'Find hotels', task_count: 1, task_index: 0, text: SECRET, tool_preview: SECRET }),
-      raw('subagent.tool', 14, { subagent_id: 'sa1', goal: 'Find hotels', task_count: 1, task_index: 0, tool_name: 'web_search', tool_preview: SECRET, text: SECRET }),
-      raw('subagent.progress', 15, { subagent_id: 'sa1', goal: 'Find hotels', task_count: 1, task_index: 0, text: SECRET }),
-      raw('subagent.thinking', 16, { subagent_id: 'sa1', goal: 'Find hotels', task_count: 1, task_index: 0, text: SECRET }),
+      raw('tool.complete', 7, { tool_id: 't1', name: 'terminal', summary: MARKER, result: MARKER, result_text: MARKER, inline_diff: MARKER }),
+      raw('tool.start', 8, { tool_id: 't2', name: 'write_file', context: MARKER, args: { path: `/tmp/${MARKER}/notes.md`, content: MARKER } }),
+      raw('tool.start', 9, { tool_id: 't3', name: 'browser_navigate', args: { url: `https://me:${MARKER}@example.com/${MARKER}?q=${MARKER}` } }),
+      raw('tool.start', 10, { tool_id: 't4', name: 'tool_call', args: { query: MARKER }, labels: [{ kind: 'connector', app: 'Gmail', action: 'send', emoji: '', text: MARKER, name: 'gmail_send', preview: MARKER }] }),
+      raw('status.update', 11, { kind: 'status', text: MARKER }),
+      raw('todo.updated', 12, { todos: [{ content: MARKER, status: 'pending' }], revision: 1 }),
+      raw('subagent.spawn_requested', 13, { subagent_id: 'sa1', goal: 'Find hotels', task_count: 1, task_index: 0, text: MARKER, tool_preview: MARKER }),
+      raw('subagent.tool', 14, { subagent_id: 'sa1', goal: 'Find hotels', task_count: 1, task_index: 0, tool_name: 'web_search', tool_preview: MARKER, text: MARKER }),
+      raw('subagent.progress', 15, { subagent_id: 'sa1', goal: 'Find hotels', task_count: 1, task_index: 0, text: MARKER }),
+      raw('subagent.thinking', 16, { subagent_id: 'sa1', goal: 'Find hotels', task_count: 1, task_index: 0, text: MARKER }),
       raw('subagent.complete', 17, {
         subagent_id: 'sa1',
         goal: 'Find hotels',
@@ -41,17 +41,17 @@ describe('frames are cut down on arrival', () => {
         task_index: 0,
         status: 'completed',
         summary: 'Found three hotels near the station',
-        files_read: [`/x/${SECRET}.txt`],
-        files_written: [`/y/${SECRET}.txt`],
-        output_tail: [{ tool: 'web_search', preview: SECRET, is_error: false }]
+        files_read: [`/x/${MARKER}.txt`],
+        files_written: [`/y/${MARKER}.txt`],
+        output_tail: [{ tool: 'web_search', preview: MARKER, is_error: false }]
       }),
-      raw('message.complete', 18, { text: SECRET, reasoning: SECRET, status: 'complete' })
+      raw('message.complete', 18, { text: MARKER, reasoning: MARKER, status: 'complete' })
     ]
     const at = 1_000
     const inputs: RoomInput[] = [
       {
         type: 'active_list',
-        rows: [roomSessionRow({ current: false, id: 'live-1', last_active: 1, message_count: 4, model: SECRET, preview: SECRET, session_key: 'stored-1', started_at: 1, status: 'working', title: 'Budget review' } satisfies SessionActiveItem)!],
+        rows: [roomSessionRow({ current: false, id: 'live-1', last_active: 1, message_count: 4, model: MARKER, preview: MARKER, session_key: 'stored-1', started_at: 1, status: 'working', title: 'Budget review' } satisfies SessionActiveItem)!],
         sentAt: at,
         at
       },
@@ -62,7 +62,7 @@ describe('frames are cut down on arrival', () => {
         latestSeq: 18,
         truncated: false,
         frames: frames.map(roomFrame).filter(frame => frame !== null),
-        requests: [roomRequest({ id: 'srq-1', method: 'clarify', params: { session_id: 'live-1', question: SECRET } }), roomRequest({ id: 'srq-2', method: 'secret', params: { session_id: 'live-1', prompt: SECRET, env_var: SECRET } })].filter(
+        requests: [roomRequest({ id: 'srq-1', method: 'clarify', params: { session_id: 'live-1', question: MARKER } }), roomRequest({ id: 'srq-2', method: 'secret', params: { session_id: 'live-1', prompt: MARKER, env_var: MARKER } })].filter(
           request => request !== null
         ),
         backfill: false,
@@ -71,20 +71,20 @@ describe('frames are cut down on arrival', () => {
       },
       {
         type: 'delegation',
-        records: [roomHelperRecord({ subagent_id: 'sa2', goal: 'Read the contract', status: 'running', tool_count: 2, last_tool: 'read_file', owner_agent_session_id: 'stored-1', model: SECRET, missed_steer: SECRET } satisfies ActiveSubagent)!],
+        records: [roomHelperRecord({ subagent_id: 'sa2', goal: 'Read the contract', status: 'running', tool_count: 2, last_tool: 'read_file', owner_agent_session_id: 'stored-1', model: MARKER, missed_steer: MARKER } satisfies ActiveSubagent)!],
         initial: false,
         sentAt: at + 3,
         at: at + 4
       },
-      { type: 'session_meta', rows: [roomSessionMeta({ id: 'stored-1', title: 'Budget review', preview: SECRET, source: 'herald_os' })!], at: at + 5 }
+      { type: 'session_meta', rows: [roomSessionMeta({ id: 'stored-1', title: 'Budget review', preview: MARKER, source: 'herald_os' })!], at: at + 5 }
     ]
     const state = inputs.reduce(reduceRoom, EMPTY_ROOM)
     const facts = Object.values(state.agents).flatMap(agent => factsOf(agent, state, at + 10))
 
     expect(Object.keys(state.agents).sort()).toEqual(['h:sa1', 'h:sa2', 's:live-1'])
-    expect(JSON.stringify(state)).not.toContain(SECRET)
-    expect(JSON.stringify(facts)).not.toContain(SECRET)
-    expect(JSON.stringify(summarizeRoom(state, at + 10))).not.toContain(SECRET)
+    expect(JSON.stringify(state)).not.toContain(MARKER)
+    expect(JSON.stringify(facts)).not.toContain(MARKER)
+    expect(JSON.stringify(summarizeRoom(state, at + 10))).not.toContain(MARKER)
     expect(state.agents['h:sa1'].result).toMatchObject({ status: 'completed', summary: 'Found three hotels near the station', filesRead: 1, filesWritten: 1 })
   })
 
@@ -115,7 +115,7 @@ describe('tool calls sign by name and arguments', () => {
     expect(callSignature('read_file', { path: 'a', limit: 2 })).toBe(callSignature('read_file', { limit: 2, path: 'a' }))
     expect(callSignature('read_file', { path: 'a' })).not.toBe(callSignature('read_file', { path: 'b' }))
     expect(callSignature('read_file', { path: 'a' })).not.toBe(callSignature('write_file', { path: 'a' }))
-    expect(callSignature('read_file', { path: SECRET })).not.toContain(SECRET)
+    expect(callSignature('read_file', { path: MARKER })).not.toContain(MARKER)
   })
 })
 
