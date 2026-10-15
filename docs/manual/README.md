@@ -55,8 +55,9 @@ how Herald OS Linux is put together.
 - [Crash help](crash-help.md): Hermes explains crashes.
 - [The desktop pet](pet.md): Hermes's pet on the desktop, what it shows, approvals, chat and
   dropped files, and keeping it out of the way.
-- [The Pet Room](room.md): every conversation, mission and helper Hermes is working on as a pet of
-  its own, at the tool it uses, with its approvals and what is true about it.
+- [The Pet Room](room.md): every conversation, mission, helper and automation Hermes is working on
+  as a pet of its own, at the tool it uses or the desk of its document, with its approvals and what
+  is true about it; also as your screensaver.
 
 ### Apps
 

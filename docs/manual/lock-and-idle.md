@@ -43,6 +43,10 @@ Show it now with Toggle > Show the screensaver in the Herald OS menu, or `herald
 Any key or movement of the mouse ends it. It does not lock the screen by itself; the lock comes at
 its own time.
 
+Settings > Pet Room can show [the Pet Room](room.md#the-room-as-the-screensaver) instead of the
+clock: Hermes's work as pets, with no names or words. While Herald Slides presents, or while the
+desktop pet is put away for a screen share, the clock shows instead.
+
 ## Night light
 
 Night light warms the screen's colours for the evening: `Super+Ctrl+N`, Settings > General >

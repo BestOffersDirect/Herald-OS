@@ -38,7 +38,11 @@ A `ui` request, which runs one command, also carries `session`: the live Hermes 
 Hermes binds for tools (`HERMES_UI_SESSION_ID`), so the shell can tell which conversation's agent ran
 the command. The Pet Room uses it to put the right pet at a document's desk. It is optional: the
 bridge leaves it out when Hermes binds none, a shell from before it ignores it, and the shell runs a
-request without it.
+request without it. The shell takes it only as an id (letters, digits and `_.:-`, at most 128
+characters; anything else counts as no session), keeps it with the command in its command log, and
+gives the Pet Room no more than the command's id, the session, the app and the document's name. In
+panels mode the Hermes window passes that on to the Pet Room's and the screensaver's windows only
+while they are open.
 
 ## Documents
 

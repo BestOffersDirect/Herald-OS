@@ -1065,9 +1065,11 @@ mission and each helper agent a conversation spawned. Pets walk to an area for t
 using, a bubble says the step each one is on, a parent walks a note to a helper it spawned and the
 helper brings the result back, a pet raises a sign when it needs an approval, and idle or stuck
 agents show what is true about them. The first phase is the store, the shared pet pieces, the
-scene, the window in both shell modes, its commands and Settings > Pet Room. Automations, an
-"elsewhere" lane, desks, meetings, a screensaver, observer hooks, an activity log, a time-lapse and
-cost meters come later and slot into what is here.
+scene, the window in both shell modes, its commands and Settings > Pet Room. The second adds
+Herald's automations, an opt-in "elsewhere" lane for Hermes work outside Herald, desks for the
+documents open in Herald Office and Canvas, meetings at a desk, the session that ran a command on
+the bridge's control-socket requests, and the Room as Herald's screensaver. Observer hooks, an
+activity log, a time-lapse and cost meters come in the third and slot into what is here.
 
 - **Only what Hermes reports.** The Room's store (`src/features/room`) is event-sourced: one record
   per agent (kind, title, parent, phase, area, target, step, last event, approval), folded by pure
@@ -1105,11 +1107,11 @@ cost meters come later and slot into what is here.
   only the last 200 frames, so it never pulls a ring's megabytes. Nothing polls while the Room is
   closed, minimized or hidden.
 - **Kinds, and the person's own pets.** A helper is a kind of its own; a session that keeps a todo
-  list is a mission (Herald's missions start with one); the rest are conversations; automations
-  arrive in phase 2. Each kind shows the installed pet the person picked in Settings > Pet Room, or
-  one the Room picks so kinds differ; agents that share a sprite wear colour tints that stay theirs
-  while they are in the room. The Room never installs a pet and never calls `pet.select`, which
-  would change the pet every Hermes surface shows.
+  list is a mission (Herald's missions start with one); the rest are conversations; automations and
+  work elsewhere (phase 2) are kinds too. Each kind shows the installed pet the person picked in
+  Settings > Pet Room, or one the Room picks so kinds differ; agents that share a sprite wear colour
+  tints that stay theirs while they are in the room. The Room never installs a pet and never calls
+  `pet.select`, which would change the pet every Hermes surface shows.
 - **One scene, one clock, a capped cache.** The desktop pet's pure parts (sheet layout and poses,
   sheet decoding, activity and step rules) moved to `src/features/petdex`, which the desktop pet and
   the Room share, together with a renderer-wide sprite cache keyed by slug and revision that holds
@@ -1135,13 +1137,73 @@ cost meters come later and slot into what is here.
   Missions page and Settings; on Herald OS Linux it is a `window:room` surface, "Herald OS · Pet
   Room", with its own gateway client and a niri rule that tiles it at a third of the screen.
   `room.open` and `room.status` are commands like any other ("show the pet room").
-- **Room for the later phases.** The store's reducer takes an open union of inputs, so automations,
-  an "elsewhere" lane for Hermes work in other processes (messaging bots, the CLI and TUI, Hermes's
-  own desktop app, cron run by the messaging gateway, all out of scope for now) and observer hooks
-  are new inputs, and the traces are what an activity log and a time-lapse replay. The scene takes
-  its state as props, so a screensaver or a time-lapse can drive it, and its areas, slots and lanes
-  are a table, so new areas, desks and meetings are entries. Helpers' `subagent.complete` frames
-  already carry the token and call counts a cost meter needs.
+- **Room for the later phases.** The store's reducer takes an open union of inputs, so phase 2's
+  automations, lane, desks and commands came in as new inputs, observer hooks will too, and the
+  traces are what an activity log and a time-lapse replay. The scene takes its state as props (the
+  screensaver drives it with `chrome`, `names`, `deskNames` and `interactive` off), and its areas,
+  spots and lanes are a table, so the Automations corner, desks and the lane are entries. Helpers'
+  `subagent.complete` token, call and cost counts are kept on `RoomResult` for cost meters and not
+  shown.
+
+Phase 2:
+
+- **Automations, coarse on purpose.** Cron agents send no gateway events, so an automation's pet
+  shows only what the Automations page knows, from the same routes through Herald's backend:
+  `/api/cron/jobs` for each job's name and its last run's time and outcome, and
+  `/api/cron/jobs/{id}/runs?limit=1` for whether a run is under way (Hermes's own `is_active`: not
+  ended and heard from in the last five minutes). A job's prompt, script, delivery target, error
+  text and run titles never reach the Room. Jobs are read every 2 minutes, every 30 s while one
+  runs, and a second after `cron.changed`; a job's latest run every 5 minutes, every 15 s while it
+  runs, at once when its record moves, and after `cron.changed` for every job, because a scheduler
+  claims a run before its record shows a change; a run not yet under way is read once more 5 s
+  later. An automation that runs when something happens is a paused job by design and is not shown
+  as paused. Its pet stands at the Automations board at the front of the room: at work while a run
+  is under way, resting between runs, with "running for 3 minutes", "ran 2 hours ago", "failed 5
+  minutes ago", "not run yet" or "paused". It opens `automation.show`.
+- **The elsewhere lane: opt-in, coarse and outside the room.** `room.elsewhere` in prefs.json is off
+  unless the person turns it on, and while it is off `/api/sessions` is never called. On, the lane
+  reads `/api/sessions?order=recent&limit=40&exclude_sources=herald_os,hermes_os,tool` once a
+  minute, keeps each row's id, title, source, times and `is_active` (never its preview, model or
+  counts), and leaves out Herald's own sessions (by source, and by the stored ids its live agents
+  hold), helpers, and runs of automations the Room already shows (`cron_<job id>_<time>`). Rows last
+  active more than an hour ago are dropped, at most 12 are kept, and where each runs comes from a
+  fixed table of sources ("Telegram", "the Hermes CLI"). Its label is as of the last read ("Telegram
+  · active now", "the Hermes CLI · last active 25 minutes ago"), it shows no steps, its pets never
+  walk or open anything, and its header says it is coarse. The lane takes the right edge of the
+  scene; the room gives up its width.
+- **Desks from presence, by name only.** The documents Herald's Office and Canvas windows report
+  open (`office.presence`, `canvas.presence`, which main answers in both shell modes) stand as desks
+  below their app's station: a document's key and name, never its path, selection or what is in
+  front inside it, at most four an area and as many as fit the floor. An agent works at a desk when
+  its target names the document; else when the latest Office or Canvas command its session ran in
+  that app, within its turn and the last five minutes, names one (a closed document gets no desk);
+  else, for a call on "the document in front", at that app's front document. The desk is traced to
+  the frame, the command or the presence that put the agent there. Desks keep their places as
+  documents come and go, and a window that reloads stops reporting what it had open.
+- **Which agent ran a command.** The bridge sends `get_session_env("HERMES_UI_SESSION_ID")` (the
+  live gateway session id Hermes binds for tools) as `session` on each control-socket `ui` request,
+  only when bound. The shell takes it only as an id (`[A-Za-z0-9_.:-]{1,128}`), keeps it on
+  `CommandEvent.session`, and an older bridge without it still works. The Room cuts each agent's
+  Office or Canvas command down to its id, session, app and document name, from the same rule the
+  desktop pet follows windows by (`followFrom`); in panels mode the Hermes window relays those to
+  the Room's and the screensaver's windows with `ifOpen`, so the relay never opens a window.
+- **Meetings.** Two or more working agents at one desk, or on one document in an area with desks,
+  meet: they stand on either side of the desk and each tag says "2 agents on Launch plan.docx", a
+  hint rather than a warning.
+- **The Room as the screensaver.** `room.screensaver` (off by default) shows the scene in Herald's
+  existing screensaver in both modes (`$screensaverUp` over the desktop, the `screensaver` surface
+  in panels mode) with no header, names, facts, result summaries, document names or words on the
+  furniture, and nothing that answers or opens; `room.screensaverSteps` brings back the step
+  bubbles. Any key, click, pointer move or wheel ends it after a 1.2 s grace. It decides once
+  Herald's preferences have loaded, and shows the clock instead while Herald Slides presents (the
+  Slides store in desktop mode, the compositor's windows in panels mode) or the desktop pet is put
+  away for a screen share, the one sign of sharing Herald has. The panels-mode screensaver window is
+  resizable, so niri's full screen sizes it to the output.
+- **Preferences a window saves.** `setPetPrefs` and `setRoomPrefs` send only the fields they change,
+  and main merges them into what is on disk. Before, a window sent its whole pet object, so a stale
+  copy (another Herald sharing prefs.json, such as a dev app beside the installed one, or a file
+  restored from a backup) wrote `hidden: false` back with any pet change, and the next broadcast
+  brought a put-away pet back: the likely cause of the one time it came back during phase 1 testing.
 
 Phase 0 findings (the installed Hermes, a git checkout from 2026-09-25, and the pinned upstream
 v0.21.5 have the same methods and shapes; measured in the dev app on an Apple Silicon Mac):
@@ -1183,10 +1245,45 @@ Alternatives considered:
   the result, next to file content; the Room counts identical calls itself.
 - **Rejected: a canvas or a timer per pet**, as the desktop pet had: the cost grows with every
   agent, and many timers drift apart.
+- **Rejected: one `/api/sessions?source=cron` call for every job's runs.** It covers one profile;
+  the Automations page reads each job's runs from the profile that holds it, and so does the Room.
+- **Rejected: the lane on by default, or previews for richer labels.** Work outside Herald is the
+  person's other surfaces: the lane is opt-in and stays at titles and activity.
+- **Rejected: giving a command to whichever agent is in that app.** Two agents in Docs at once are
+  ordinary; the session the bridge sends tells them apart.
+
+Phase 2 findings (the same installed Hermes, the dev app on an Apple Silicon Mac, and the QEMU VM in
+panels mode):
+
+- `HERMES_UI_SESSION_ID` is the gateway's live session id (eight hex characters), the id
+  `session.active_list` lists. A `ui` request sent with it through the bridge landed on the command
+  log with that session, while the agents' own commands through the installed, older bridge
+  carried none and ran as before.
+- A triggered test automation showed as running about 2.5 s later, through `cron.changed`.
+  `POST /api/cron/jobs/{id}/trigger` returns only when the run has finished; the run's session is
+  `cron_<job id>_<YYYYmmdd_HHMMSS>`, and its usage line goes to `cron/usage_audit.jsonl` and its
+  execution to `cron/executions.db`.
+- Hermes CLI one-shots (`hermes chat -q … --oneshot`) are stored with the source `oneshot`.
+- Office presence names a document without its extension ("Launch plan"), so names are compared with
+  or without one.
+- A renderer reload keeps its web contents, so main went on reporting the documents of Office and
+  Canvas windows that were gone; presence is now cleared on `did-navigate`.
+- In the VM, niri runs nested in cage, and the display Electron reported (1540x936) was larger than
+  niri's output (1508x894): the screensaver window, not resizable, overhung the screen.
+- An open Room with four resting pets (two of them automations) and three desks cost about 0.6% of a
+  core over the same Herald with the Room closed, across main (0.07 points), the GPU (0.23), the
+  renderer (0.04) and Hermes (0.24). As the screensaver, the Room cost about 0.65% more than the
+  clock.
 
 **Known limits.** Times are when the Room received a frame: up to a second late for a working
 session and ten for an idle one. A session counts as a mission only once it keeps a todo list. With
 `display.tool_progress` off, pets cannot show tools or areas. A session's ring keeps 512 frames, so
 a burst between two polls can drop frames, which the Room reads as a gap rather than guessing.
 Helpers show the tool they use but not its target, since Hermes gives only a free-text preview. A
-backend restart starts the Room again from what Hermes lists.
+backend restart starts the Room again from what Hermes lists. An automation's run is under way by
+Hermes's `is_active`, so one that died silently looks under way for up to five minutes. The lane
+reads the default profile's sessions, and its labels are up to a minute old. A document gets a desk
+only while it is open in Herald, and meetings are found only in the Office and Canvas areas. The
+screensaver knows of Herald Slides presenting and of the pet put away, not of another app sharing
+the screen. Commands from an older bridge carry no session, so their agents find desks by their
+steps alone.

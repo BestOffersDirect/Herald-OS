@@ -379,11 +379,12 @@ abilities as a regular Hermes plugin, `herald-os-bridge`.
   in a chat bubble and files you drop on it, walks over to the window Hermes works in, and gets out
   of the way for full screen, presentations and screen shares. See
   [the manual](docs/manual/pet.md).
-- **The Pet Room**: a window where every conversation, mission and helper Hermes is working on
-  stands as a petdex pet of its own. Pets walk to the area for the tool they use, say the step
-  they are on, hand notes to the helpers they start and get the results back, and hold up a sign
-  when they need your OK, from what Hermes reports and nothing else. See
-  [the manual](docs/manual/room.md).
+- **The Pet Room**: a window where every conversation, mission, helper and automation Hermes is
+  working on stands as a petdex pet of its own. Pets walk to the area for the tool they use, stand
+  at the desk of the document they work on, say the step they are on, hand notes to the helpers they
+  start and get the results back, and hold up a sign when they need your OK, from what Hermes
+  reports and nothing else. A lane for Hermes at work outside Herald and the room as your
+  screensaver are there when you turn them on. See [the manual](docs/manual/room.md).
 - **Make it yours**: twelve themes (two light) that also dress Hermes's own command line, a theme
   made from any image, themes installed from git, your own fonts, and Hermes can design one from a
   description. Widgets for the menu bar, the Overview or their own window run sandboxed with only
