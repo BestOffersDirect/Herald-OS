@@ -24,7 +24,7 @@ import type {
  */
 
 /** A finished helper stays for its walk back to the agent that spawned it. */
-export const FINISHED_KEEP_MS = 12_000
+export const FINISHED_KEEP_MS = 16_000
 export const HANDOFF_KEEP_MS = 20_000
 export const ANSWERED_KEEP_MS = 15_000
 /** Without `session.active_list` nothing says a session ended: an idle one is let go after this long without a frame. */
