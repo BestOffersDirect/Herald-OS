@@ -104,6 +104,47 @@ export interface RoomAgent {
   /** Helpers: tools used so far, from `delegation.status` or `subagent.*` frames. */
   toolCount: number | null
   trace: Partial<Record<RoomField, RoomTrace>>
+  /** What the Room works the phase, area and step out from; nothing to draw. */
+  basis?: RoomBasis
+}
+
+/** Hermes's word for a session: `session.active_list`'s status, or what a turn's frames say. */
+export type RoomLiveStatus = 'idle' | 'starting' | 'working' | 'waiting'
+
+export interface RoomBasis {
+  status: RoomLiveStatus | null
+  /** When the status was true: a record's request time, a polled frame's request time, a live frame's receipt. */
+  statusAt: number
+  /** The newest frame evidence for the agent, on the same clock as `statusAt`. */
+  frameAt: number
+  /** Tools running now, by Hermes's tool id. */
+  tools: string[]
+  /** The running tool's area, target and step from the fixed tables. */
+  toolArea: RoomArea | null
+  toolTarget: string | null
+  toolStep: string | null
+  /** The area and target of the turn's last tool, where the agent thinks between tools. */
+  turnArea: RoomArea | null
+  turnTarget: string | null
+  /** The session's working folder, by name. */
+  cwd: string | null
+  /** The session keeps a todo list (a mission). */
+  todo: boolean
+  /** When the Room saw the agent go idle; null when it was idle when the Room first saw it. */
+  idleSince: number | null
+  /** Helpers: their own session, which `session.active_list` lists while someone watches it. */
+  childSessionId: string | null
+  /** Helpers: `delegation.status` listed it at least once. */
+  listed: boolean
+  /** Helpers: `delegation.status` polls in a row that did not list it. */
+  missing: number
+}
+
+/** A stored session row from Herald's session list: its title and where it came from, never its preview. */
+export interface RoomSessionMeta {
+  id: string
+  title: string
+  source: string | null
 }
 
 /** Something true about an agent, said as a fact rather than a verdict ('quiet for 4 minutes during a turn'). */
@@ -144,4 +185,12 @@ export interface RoomState {
   caps: RoomCaps
   /** When the Room last heard from Hermes at all. */
   updatedAt: number
+  /** Stored session rows by stored id, for titles and kinds. */
+  meta?: Record<string, RoomSessionMeta>
+  /** Approvals answered from here, by request id, so a poll that raced the answer does not raise the sign again. */
+  answered?: Record<string, number>
+  /** Approvals this window holds (its own cards), for sessions the Room has yet to see. */
+  local?: RoomApproval[]
+  /** Where `toolProgress` came from. */
+  toolProgressTrace?: RoomTrace | null
 }

@@ -31,6 +31,7 @@ import { bindVoice } from './voice.ts'
 import { bindWake } from './wake.ts'
 import { surface } from './shell.ts'
 import { bindPetBrain } from '../features/pet/brain.ts'
+import { guardRoomReads } from '../features/room/store.ts'
 import { bindPetInfo, bindPetSheet } from '../features/pet/info.ts'
 import { bindPetSnapshots } from '../features/pet/transport.ts'
 
@@ -66,6 +67,7 @@ export function bootRenderer(): void {
   bindLanguage()
   bindGatewayToBackend()
   bindChatEvents()
+  guardRoomReads()
   bindServerRequests()
   bindNotificationEvents()
   bindAgentEvents()

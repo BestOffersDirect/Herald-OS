@@ -47,7 +47,7 @@ export const roomCommands: readonly OsCommand[] = [
     id: 'room.status',
     title: 'What the Pet Room shows',
     description:
-      'What the Pet Room shows now: how many agents are at work, waiting for the person or idle, and a line for each from the Room’s fixed labels ("Budget review: reading Budget.xlsx"). Titles and step labels only, never what a conversation says.',
+      'What the Pet Room shows now: how many agents are at work, waiting for the person or idle, and a line for each from the Room’s fixed labels ("Budget review (mission): reading Budget.xlsx"). Titles and step labels only, never what a conversation says.',
     tier: 'read',
     args: [],
     phrases: ['what is hermes doing', 'what is in the pet room', 'whats in the pet room', 'what is happening in the pet room', 'pet room status'],
