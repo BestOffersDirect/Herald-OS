@@ -87,6 +87,7 @@ import type { OfficeAbilities, OfficeApp } from '../shared/office/files.ts'
 import type { MenuExtensions } from '../shared/menu-extensions.ts'
 import type { PetAction, PetBridge, PetCover, PetInfo, PetRect, PetSnapshot, PetWindowPlacement } from '../shared/pet.ts'
 import type { PluginMethod, PluginView } from '../shared/plugins.ts'
+import type { RoomActivity, RoomBridge, RoomLogDay, RoomLogEntry } from '../shared/room.ts'
 import type { HeraldEvent } from '../shared/events.ts'
 import type { ThemeSpec, ThemeSummary } from '../shared/theme.ts'
 
@@ -102,6 +103,14 @@ const subscribe = <T,>(channel: string, listener: (payload: T) => void): Unsubsc
   ipcRenderer.on(channel, wrapped)
 
   return () => ipcRenderer.removeListener(channel, wrapped)
+}
+
+// Main sends this window live activity only while one of these listens.
+const activityListeners = new Set<(events: RoomActivity[]) => void>()
+const hearActivity = (_event: unknown, events: RoomActivity[]) => {
+  for (const listener of [...activityListeners]) {
+    listener(events)
+  }
 }
 
 /** The whole capability surface the renderer gets. Keep it narrow and typed. */
@@ -321,6 +330,29 @@ const api = {
       return off
     }
   } satisfies PetBridge,
+  room: {
+    watchActivity: (listener: (events: RoomActivity[]) => void): Unsubscribe => {
+      const own = (events: RoomActivity[]) => listener(events)
+      activityListeners.add(own)
+
+      // Only the first listener hears what came in lately: main sends it as this window starts watching.
+      if (activityListeners.size === 1) {
+        ipcRenderer.on(IPC.roomActivity, hearActivity)
+        ipcRenderer.send(IPC.roomActivityWatch, true)
+      }
+
+      return () => {
+        if (activityListeners.delete(own) && activityListeners.size === 0) {
+          ipcRenderer.removeListener(IPC.roomActivity, hearActivity)
+          ipcRenderer.send(IPC.roomActivityWatch, false)
+        }
+      }
+    },
+    appendLog: (entries: RoomLogEntry[]): void => ipcRenderer.send(IPC.roomLogAppend, entries),
+    logDays: (): Promise<RoomLogDay[]> => ipcRenderer.invoke(IPC.roomLogDays),
+    readLog: (day: string): Promise<RoomLogEntry[]> => ipcRenderer.invoke(IPC.roomLogRead, day),
+    deleteLog: (): Promise<void> => ipcRenderer.invoke(IPC.roomLogDelete)
+  } satisfies RoomBridge,
   catalog: {
     /** The install catalog with each entry's state on this machine (Linux: everything; macOS: what installs here). */
     list: (): Promise<CatalogGroupView[]> => ipcRenderer.invoke(IPC.catalogList),

@@ -17,7 +17,8 @@ import type { ShellHost } from './host.ts'
 import { menuFile, readMenuExtensions } from './menu-extensions.ts'
 import { brandingView, setBranding } from './branding.ts'
 import type { BrandingPatch, BrandingView } from '../../shared/branding.ts'
-import { handleUiRequest, isUiRequest, type OsCommandBridge, type UiControlRequest } from './os-control.ts'
+import type { ActivityHub } from '../room/activity.ts'
+import { handleUiRequest, isUiRequest, type OsCommandBridge, serveJsonLines, type UiControlRequest } from './os-control.ts'
 
 interface ControlRequest {
   cmd: string
@@ -45,13 +46,15 @@ export class ControlSocket {
     /** Called after the CLI changes preferences so windows and the wallpaper follow. */
     private readonly onPrefsChanged?: (prefs: HeraldOSPrefs) => void,
     /** Runs registry commands in the Hermes window (`ui`, `ui-list`, `ui-state`; token-protected). */
-    private readonly osBridge?: OsCommandBridge,
+    private readonly osBridge?: Pick<OsCommandBridge, 'run' | 'list' | 'state'>,
     /** A theme was applied: Hermes's skin follows it. */
     private readonly onTheme?: (spec: ThemeSpec) => void,
     /** The CLI changed a switch (night light, staying awake): the menu bar follows. */
     private readonly onSwitches?: () => void,
     /** `herald-os plugin …`: the same plugin host Settings uses. */
-    private readonly plugins?: PluginHost
+    private readonly plugins?: PluginHost,
+    /** `activity` from Hermes processes outside Herald, under a token of its own. */
+    private readonly activity?: Pick<ActivityHub, 'handle'>
   ) {}
 
   get socketPath(): string {
@@ -75,26 +78,7 @@ export class ControlSocket {
       }
     }
 
-    this.server = net.createServer(connection => {
-      let buffer = ''
-      connection.setEncoding('utf8')
-      connection.on('data', chunk => {
-        buffer += chunk
-        let index = buffer.indexOf('\n')
-
-        while (index >= 0) {
-          const line = buffer.slice(0, index).trim()
-          buffer = buffer.slice(index + 1)
-
-          if (line) {
-            void this.handleLine(line).then(reply => connection.write(`${JSON.stringify(reply)}\n`))
-          }
-
-          index = buffer.indexOf('\n')
-        }
-      })
-      connection.on('error', () => undefined)
-    })
+    this.server = net.createServer(connection => serveJsonLines(connection, line => this.handleLine(line)))
     this.server.on('error', error => log('control', `socket error: ${error.message}`))
     this.server.listen(socketPath, () => {
       fs.chmodSync(socketPath, 0o600)
@@ -132,6 +116,11 @@ export class ControlSocket {
   private async handle(request: ControlRequest): Promise<Record<string, unknown>> {
     const args = request.args ?? []
     const { cmd } = request
+
+    // Before the launch token: Hermes processes outside Herald have only the activity token.
+    if (cmd === 'activity' && this.activity) {
+      return this.activity.handle(request as unknown as Record<string, unknown>)
+    }
 
     if (this.osBridge && isUiRequest(cmd)) {
       const reply = await handleUiRequest(request as unknown as UiControlRequest, this.osBridge)

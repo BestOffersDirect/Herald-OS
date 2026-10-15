@@ -1116,7 +1116,18 @@ export const IPC = {
   petVisible: 'herald-os:pet:visible',
   petWorkArea: 'herald-os:pet:work-area',
   /** Main -> the pet window: `PetCover`. */
-  petCover: 'herald-os:pet:cover'
+  petCover: 'herald-os:pet:cover',
+
+  // The Room (shared/room.ts): live activity from Hermes outside Herald, and the activity log.
+  /** A window -> main: start (`true`) or stop (`false`) hearing live activity. */
+  roomActivityWatch: 'herald-os:room:activity-watch',
+  /** Main -> a window that watches: a batch of `RoomActivity`. */
+  roomActivity: 'herald-os:room:activity',
+  /** A window -> main: `RoomLogEntry[]` for the activity log, dropped unless the log is on. */
+  roomLogAppend: 'herald-os:room:log-append',
+  roomLogDays: 'herald-os:room:log-days',
+  roomLogRead: 'herald-os:room:log-read',
+  roomLogDelete: 'herald-os:room:log-delete'
 } as const
 
 /** Raw pixels for a project image or an export: RGBA layers, grayscale masks. */
