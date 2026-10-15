@@ -440,7 +440,8 @@ export class PanelShell implements ShellHost {
       case 'panel':
         return { ...PANEL_SIZE, transparent: true, resizable: false }
       case 'screensaver':
-        return { width: size.width, height: size.height, resizable: false }
+        // Resizable, so niri's full screen sets its size: the display Electron reports can be larger than the output niri fills.
+        return { width: size.width, height: size.height, resizable: true }
       case 'wallpaper':
         return { width: size.width, height: size.height, show: false, offscreen: true, focusable: false }
       case 'pet':

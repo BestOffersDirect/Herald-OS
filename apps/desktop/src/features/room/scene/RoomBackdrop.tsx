@@ -158,7 +158,7 @@ function Desk({ station, unit, glowing, still, words, named }: Drawn & { unit: n
         <Glyph size={Math.round(Math.min(rect.height * 0.6, unit * 0.26))} stroke={1.7} className={glowing ? 'text-progress' : 'text-fg-3'} />
       </div>
       {words && named && (
-        <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 truncate rounded bg-black/25 px-1.5 py-px text-center text-[10px] leading-tight whitespace-nowrap text-fg-3" style={{ maxWidth: Math.round(rect.width + unit * 0.5) }}>
+        <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 truncate rounded bg-black/25 px-1.5 py-px text-center text-[10px] leading-tight whitespace-nowrap text-fg-3" style={{ maxWidth: Math.max(84, Math.round(rect.width + unit * 0.5)) }}>
           {station.label}
         </span>
       )}
