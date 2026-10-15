@@ -360,8 +360,11 @@ export function registerCanvasIpc(getWindow: () => BrowserWindow | null): void {
     const id = event.sender.id
     const known = presence.get(id)
 
-    if (!known) {
+    if (!reporting.has(event.sender)) {
+      reporting.add(event.sender)
       event.sender.once('destroyed', () => presence.delete(id))
+      // A reload keeps the web contents but not its projects: what it reported before is gone.
+      event.sender.on('did-navigate', () => presence.delete(id))
     }
 
     presence.set(id, { active: report.active ?? null, documents: Array.isArray(report.documents) ? report.documents : [], at: report.focused || !known ? Date.now() : known.at })
@@ -414,6 +417,8 @@ async function clipboardImage(): Promise<Uint8Array | null> {
 
 /** What each Canvas window has open, by its web contents. */
 const presence = new Map<number, CanvasPresence>()
+/** Web contents whose closing or reloading already clears their presence: one set of listeners each. */
+const reporting = new WeakSet<Electron.WebContents>()
 
 const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 

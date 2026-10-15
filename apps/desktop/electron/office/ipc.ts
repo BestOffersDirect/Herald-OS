@@ -230,12 +230,15 @@ export function registerOfficeIpc(getWindow: () => BrowserWindow | null): void {
 
     if (!reporting.has(sender)) {
       const id = sender.id
-      reporting.add(sender)
-      sender.once('destroyed', () => {
+      const clear = () => {
         for (const app of OFFICE_APPS) {
           presence.delete(`${id}:${app}`)
         }
-      })
+      }
+      reporting.add(sender)
+      sender.once('destroyed', clear)
+      // A reload keeps the web contents but not its documents: what it reported before is gone.
+      sender.on('did-navigate', clear)
     }
 
     const documents = Array.isArray(report.documents) ? report.documents : []
