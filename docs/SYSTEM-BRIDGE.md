@@ -163,6 +163,59 @@ terminal sessions as well. The plugin decides from the session instead (`bridge/
 `herald_os.bridge.enabled: false` in `config.yaml` (or `HERALD_OS_BRIDGE_DISABLED=1`) hides the tools
 and refuses their calls everywhere, Herald OS sessions included.
 
+## Live steps for the Pet Room
+
+The plugin also registers Hermes's observer hooks (`bridge/observe.py`): `pre_tool_call`,
+`post_tool_call`, `subagent_start`, `subagent_stop`, `on_session_start`, `on_session_end`,
+`pre_approval_request` and `post_approval_response`. Hermes runs them in every process that loads
+the plugin (messaging gateways, the CLI and TUI, cron), and they feed the Pet Room's lane for Hermes
+work outside Herald with each piece of work's tool, helpers and approval waits. They do nothing
+unless the person turns on Settings > Pet Room > Live steps from Hermes outside Herald, which needs
+Show Hermes work outside Herald on too.
+
+- **Off unless a Herald asks.** Each running Herald OS writes `$HERMES_HOME/herald-os/observe/<pid>.json`
+  (mode 0600 in a 0700 folder, written whole and renamed into place) when it starts and whenever its
+  Room preferences change, and removes it when it quits; at start it also removes the files of
+  Heralds that are gone. With live steps off the file says only `{"v": 1, "pid": …, "live": false}`.
+  With them on it adds the path of the control socket Herald serves and an activity token: 32 random
+  bytes, not the per-launch token of `ui` requests, that lets a process report activity and run
+  nothing. Turning live steps off replaces the token, so a process that read the old one is refused
+  at once. A Hermes process reads the folder when the plugin loads and again at most every two
+  seconds while its hooks fire, and for a profile home the root home's folder too; it trusts a file
+  only when this user owns it and nobody else can read it, and its socket path is absolute. Until a
+  file says `live: true`, a hook reads a cached answer and returns: nothing is queued and no thread
+  starts.
+- **Never Herald's own work.** The backend Herald OS starts registers none of these hooks (the Room
+  already sees its work through the gateway), and in any other process a hook skips Herald OS's own
+  sessions as the tools do.
+- **Metadata only.** Each hook appends one record to a bounded queue (512) and returns; Hermes waits
+  on most hooks and blocks a tool whose `pre_tool_call` raises or stalls, so the callbacks swallow
+  every error and return `None`. A record is a kind (`session.start`, `session.end`, `tool.start`,
+  `tool.end`, `helper.start`, `helper.end`, `approval.start`, `approval.end`), Hermes's session id
+  and a helper's own, the tool's name, for `tool.start` a target cut to a file's last path segment, a
+  folder's name (for `terminal`, only the folder it runs in) or a web host without credentials, an
+  opaque id pairing a start with its end (16 hex digits of a hash of Hermes's call id), a status
+  from a fixed list, where the session runs (`telegram`, `cli`) and when the hook fired. Chat and
+  file content, the rest of a tool's arguments, commands, results, errors, a helper's goal or
+  summary, what an approval asks or how it was answered, the model and Hermes's thinking never leave
+  the hook. Approvals Hermes's smart mode decides by itself wait on nobody and are not reported.
+- **The `activity` command.** A daemon thread sends the queue in batches of at most 100 over the
+  socket the file names: `{"cmd": "activity", "token": "<activity token>", "events": [...]}`. Both
+  control sockets (the desktop one under `$HERMES_HOME/herald-os/control.sock`, and the panels
+  session's `$XDG_RUNTIME_DIR/herald-os/control.sock`) answer it before any `ui` token check, with
+  exactly `{"ok": true, "accepted": n}` or `{"ok": false, "error": "invalid activity token" | "live
+  detail is off" | "too many events"}`. Main checks the token in constant time, accepts at most 400
+  events and 50 requests a second from all processes together, checks every field of every event
+  against fixed patterns and lists (`roomActivityOf` in `apps/desktop/shared/room.ts`), stamps
+  each with a seq of its own and a time no later than its arrival, and hands the Room's windows what
+  passes; a window that starts watching first hears the last ten minutes (at most 2000 events). A
+  refused process stops sending to that Herald until its file changes, and one that cannot connect
+  tries again after 30 seconds. Both sockets also close a connection whose unfinished line passes
+  1 MiB.
+
+The Pet Room shows this work in its lane and at its stations, and never opens or answers anything
+there ([the Pet Room](manual/room.md#hermes-outside-herald)).
+
 ## Permission tiers
 
 | Tier | Behaviour | Examples |
@@ -197,7 +250,7 @@ Herald OS runs on the person's own Hermes, so these changes reach Hermes's other
 | Change | Made by | Outside Herald OS |
 | --- | --- | --- |
 | The link `$HERMES_HOME/plugins/herald-os-bridge` | setup | Inert until the plugin is enabled |
-| `herald-os-bridge` in `plugins.enabled` | setup | Hermes loads the plugin everywhere; its tools stay hidden and refuse to run (see Where the tools run) |
+| `herald-os-bridge` in `plugins.enabled` | setup | Hermes loads the plugin everywhere; its tools stay hidden and refuse to run (see Where the tools run), and its observer hooks do nothing until the person turns on live steps for the Pet Room (see Live steps for the Pet Room) |
 | `herald_os` in `platform_toolsets.cli`; `hermes tools enable` saves the whole `cli` list, with `known_plugin_toolsets` and `known_builtin_toolsets` | setup | The `hermes` CLI uses the same list |
 | `tools.tool_search.enabled: off`, the value before kept in `$HERMES_HOME/herald-os/tool-search-before` | setup; Settings > Hermes & agents > Tool search turns it back on | Every session lists its plugin and MCP tools directly instead of searching for them |
 | `display.skin: herald-os` and `$HERMES_HOME/skins/herald-os.yaml` | applying a theme, unless another skin was chosen | Hermes's own interfaces wear the theme |

@@ -1057,7 +1057,7 @@ The macOS release ships `HeraldOS-<version>-mac-arm64` and `-mac-x64` DMGs and z
 
 ## ADR-026: The Pet Room shows each live piece of Hermes work as a petdex pet
 
-**Status: Proposed** until the Room's third phase lands.
+**Status: Accepted** with its third phase.
 
 The desktop pet (ADR-022) is one face for all of Hermes. The Pet Room is a window where every live
 piece of Hermes work in Herald's own backend stands as a pet of its own: each conversation, each
@@ -1068,8 +1068,10 @@ agents show what is true about them. The first phase is the store, the shared pe
 scene, the window in both shell modes, its commands and Settings > Pet Room. The second adds
 Herald's automations, an opt-in "elsewhere" lane for Hermes work outside Herald, desks for the
 documents open in Herald Office and Canvas, meetings at a desk, the session that ran a command on
-the bridge's control-socket requests, and the Room as Herald's screensaver. Observer hooks, an
-activity log, a time-lapse and cost meters come in the third and slot into what is here.
+the bridge's control-socket requests, and the Room as Herald's screensaver. The third adds live
+steps for that outside work from observer hooks in Herald's bridge plugin, Herald's own activity log
+and a time-lapse that plays it back, cost meters, and a sprite cache that never refuses a sheet a
+view holds.
 
 - **Only what Hermes reports.** The Room's store (`src/features/room`) is event-sourced: one record
   per agent (kind, title, parent, phase, area, target, step, last event, approval), folded by pure
@@ -1138,12 +1140,12 @@ activity log, a time-lapse and cost meters come in the third and slot into what 
   Room", with its own gateway client and a niri rule that tiles it at a third of the screen.
   `room.open` and `room.status` are commands like any other ("show the pet room").
 - **Room for the later phases.** The store's reducer takes an open union of inputs, so phase 2's
-  automations, lane, desks and commands came in as new inputs, observer hooks will too, and the
-  traces are what an activity log and a time-lapse replay. The scene takes its state as props (the
+  automations, lane, desks and commands came in as new inputs, phase 3's live steps and cost reads
+  did too, and the activity log keeps a view of the same records. The scene takes its state as props (the
   screensaver drives it with `chrome`, `names`, `deskNames` and `interactive` off), and its areas,
   spots and lanes are a table, so the Automations corner, desks and the lane are entries. Helpers'
-  `subagent.complete` token, call and cost counts are kept on `RoomResult` for cost meters and not
-  shown.
+  `subagent.complete` token, call and cost counts are kept on `RoomResult`, which phase 3's cost
+  meters show.
 
 Phase 2:
 
@@ -1204,6 +1206,98 @@ Phase 2:
   copy (another Herald sharing prefs.json, such as a dev app beside the installed one, or a file
   restored from a backup) wrote `hidden: false` back with any pet change, and the next broadcast
   brought a put-away pet back: the likely cause of the one time it came back during phase 1 testing.
+
+Phase 3:
+
+- **Live steps from outside Herald: a second switch.** `room.elsewhereLive` sits under the lane's
+  switch, is off by default and counts only while `room.elsewhere` is on. Someone who turned the lane
+  on in phase 2 agreed to titles and activity read once a minute; live steps tell Herald much more,
+  in real time, from every Hermes process (each tool, the names of files, folders and sites, helpers,
+  approval waits), so that takes a yes of its own, and turning the lane on never turns them on.
+- **Observer hooks that do nothing unless asked.** Herald's bridge plugin registers `pre_tool_call`,
+  `post_tool_call`, `subagent_start`, `subagent_stop`, `on_session_start`, `on_session_end`,
+  `pre_approval_request` and `post_approval_response` (the last so a sign clears when it is answered,
+  not when the command ends). The backend Herald OS starts registers none, and other processes skip
+  Herald OS's own sessions as the tools do. A hook first reads a cached answer to whether any
+  running Herald asks for live steps: each Herald writes `$HERMES_HOME/herald-os/observe/<pid>.json`
+  (0600 in a 0700 folder, written whole and renamed) at start and on every Room preference change,
+  with `live`, and only while live the socket it serves and an activity token; the plugin reads the
+  folder at load and at most every two seconds while hooks fire (a profile home also reads the root
+  home's), and trusts only files this user owns that nobody else can read, naming an absolute
+  socket. With nothing live a hook returns at once: nothing is queued and no thread starts. Hermes
+  waits on most hooks and blocks the tool when `pre_tool_call` raises or stalls, so every callback
+  swallows its errors, returns `None` and only appends a record to a bounded queue (512) that a
+  daemon thread sends in batches of 100. A record keeps a kind, session ids, the tool's name, a
+  target cut to a file's last segment, a folder's name (only the working folder for `terminal`) or a
+  web host, 16 hex digits of a hash of Hermes's call id to pair a start with its end, a status from a
+  fixed list, the session's source and when the hook fired: never content, arguments, commands,
+  results, errors, goals, summaries, what an approval asks or how it was answered. Approvals that
+  Hermes's smart mode decides wait on nobody and are not reported.
+- **The `activity` command, under a token of its own.** An always-written file that held the
+  per-launch `ui` token would let any process of the user drive Herald's interface; the activity
+  token lets a process report and nothing else, is compared in constant time, and is replaced when
+  live steps go off. Both control sockets answer `activity` before the `ui` token check, take at most
+  100 events a request and 400 events and 50 requests a second from all processes together, check
+  each event with `roomActivityOf` (`shared/room.ts`), give it a seq of main's own and a time no later
+  than its arrival, and send it to the windows that watch, a window that starts watching first
+  hearing the last ten minutes (2000 events at most). The replies are fixed strings the plugin acts
+  on: a refusal stops it sending to that Herald until its file changes. Both sockets now close a
+  connection whose unfinished line passes 1 MiB. One file per Herald lets a dev app beside the
+  installed one each have its own.
+- **Outside work in the room.** Events fold into the lane's `e:<stored id>` records: an event for a
+  session the lane does not list yet brings it in at once (where it runs from the source, no title)
+  and asks for an early lane read; a helper is `e:<its own session>`, which its own tool calls
+  address, wears the lane's pet and comes in with a note from its parent and walks its result back.
+  The fixed tables give the area and step, so outside work walks to a station, waits on the bench
+  under a sign that is never a button ("Needs your OK in the Hermes CLI"), never holds a
+  `RoomApproval` and opens nothing; interactivity and the door follow the kind, not the area. Events
+  about Herald's own sessions, helpers or the board's automation runs are dropped; a resubscribe's
+  replay is deduplicated by seq; a turn's end from the plugin outranks the session list's
+  `is_active` for whether the pet rests; work that says it is busy but sends nothing for ten minutes
+  goes back to coarse; turning live steps off drops every live field and the outside helpers.
+- **Herald's own activity log.** `room.log` (off by default) and `room.logDays` (7, or 1, 3, 14 or
+  30). The Hermes window is its one writer in both modes and, while the log is on, keeps the Room's
+  feed running with nothing showing it, even while hidden. It writes a `begin` and every agent, then
+  an `agent` line only when an agent's logged view changes (kind, phase, area, step, target, waiting
+  or not, parent, where outside work runs, how a helper or a run ended), `gone`, hand-offs, and an
+  `end` whenever the feed stops (switched off, disconnected, the page going away, a renderer reload)
+  and at midnight; titles, desks, facts and approval details never enter it. Main checks every entry
+  (`roomLogEntryOf`), files it under its local day in `room-log/YYYY-MM-DD.jsonl` (0600) in Herald's
+  data folder, replaces each agent id with 12 hex digits of an HMAC under that day's random salt so
+  Hermes's session ids never reach the disk, writes a `cap` and stops for the day at 8 MiB, keeps the
+  folder under 64 MiB oldest day first, removes days past the retention, appends `end` on quit, and
+  deletes everything on Delete activity log (after which the window begins the new file afresh).
+- **The time-lapse.** It reads one day and indexes it once, with a keyframe every five minutes of log
+  time, so a seek folds at most that much. A stretch runs from a `begin` to the next `end`, `cap` or
+  `begin`, else to its last entry, and today's open stretch while the log is on runs until the day
+  was read; outside the stretches the room is empty and says what was not logged. It is the same
+  scene with `interactive` off, no-op handlers and `r:` ids nothing live answers to, pets named by
+  kind, approvals as signs that answer nothing, the lane in its own words ("As the Room showed it
+  then"), a 4-a-second timer that stops when hidden, and stillness while paused or under Reduce
+  Motion.
+- **Cost meters, from what Hermes already reports.** `room.costs` (each tag) and `room.costTotal`
+  (the header), both off by default and never in the screensaver. A conversation's tokens are the
+  running totals of `message.complete.usage` and `session.usage` frames, with the turn's share as
+  their difference since `message.start`; tokens count input and output, since Hermes counts
+  reasoning inside output. Money for Herald's own sessions comes from `/api/sessions` with
+  `sources=herald_os,hermes_os`, read about once a minute and a few seconds after a turn, only while a
+  meter option is on (phase 2's rule that `/api/sessions` is never called while the lane is off still
+  holds for everyone else's sessions); the lane's rows keep their counts and cost only then; a helper
+  has `subagent.complete`'s, an automation its latest run's row. The `session.usage` RPC, which
+  fetches account usage over the network, is never called (a test checks). An estimate says so
+  ("~$0.05 est."); a status of `actual` without a billed amount is shown as an estimate; a count of
+  zero shows nothing. The total leaves helpers out, as Hermes adds a helper's cost to its parent
+  conversation, and is an estimate when any part is. With meters showing, the front row and the
+  lane's rows leave room for the extra line.
+- **A sprite cache that never refuses a held sheet.** During the Pet Room video one pet never loaded:
+  the desktop pet kept its sheet even while put away, Settings' previews held more, and the Room's
+  rule of four slots less one for a shown desktop pet did not see either. Now a sheet a view holds is
+  never refused for room: the cap (4) is how many unheld sheets stay decoded for reuse, released
+  longest ago first, and a ceiling of 12 decoded sheets is the only refusal; a sheet that cannot be
+  read keeps no slot and is not read again for ten seconds or until its revision changes. The Room
+  takes one sheet for each kind of work, and a pet whose sheet failed draws a plain static figure in
+  its tint where its sprite would be (never while it is still loading); Settings' previews show a
+  paw.
 
 Phase 0 findings (the installed Hermes, a git checkout from 2026-09-25, and the pinned upstream
 v0.21.5 have the same methods and shapes; measured in the dev app on an Apple Silicon Mac):
@@ -1275,6 +1369,73 @@ panels mode):
   renderer (0.04) and Hermes (0.24). As the screensaver, the Room cost about 0.65% more than the
   clock.
 
+Phase 3 findings (the same installed Hermes, the dev app on an Apple Silicon Mac, a throwaway
+Hermes home under /tmp, and the QEMU VM in panels mode):
+
+- A Hermes CLI one-shot run from a folder under /tmp, with the worktree's plugin as a project plugin
+  (`HERMES_ENABLE_PROJECT_PLUGINS=1`), came into the lane as "the Hermes CLI" at once, walked to
+  Files during its `read_file` and back to the lane when the turn ended. With live steps off its
+  next one-shot sent nothing, and the file named no socket or token. Driving the hooks from a script
+  against the throwaway home's Herald, a wrong token, a shorter one and none were all refused; a
+  Telegram session stood at the Terminal "running a command" with only its folder's name, its helper
+  searched the web with no query shown, and a CLI approval stood on the bench under a sign that
+  cleared when the approval ended. In the VM the file named `$XDG_RUNTIME_DIR/herald-os/control.sock`,
+  the same steps and sign showed in the Room's window, and only the Hermes window wrote the log.
+- `on_session_end` fires as each turn ends, while `on_session_start` fires only for a new session, so
+  a resumed one is first heard of at its first tool call. `subagent_stop` has no `child_subagent_id`,
+  approval hooks carry a session id only during a tool call, and `post_tool_call`'s status also
+  says `cancelled` and `timeout`. While any `post_tool_call` hook is registered, Hermes works out
+  each result's status, gate closed or not.
+- A helper's session is stored with its parent's source (`herald_os` for Herald's), not `tool`.
+- Hermes gives a new session an instant title, the first line of the message that started it, until
+  its model title arrives: the lane shows that title for a minute or so, as Hermes's own apps do.
+- A first lane read could come before the first automations read and let the board's own runs into
+  the lane for a minute; an automations read now takes them out.
+- Six different sheets were decoded at once in one window (the Room's three kinds, Settings' two
+  other kinds and the desktop pet), none refused; a damaged sheet drew the fallback figure.
+- Cost meters: a test conversation read 48k tokens from its frames and its estimated cost from
+  `/api/sessions`, which rose when its helper's cost was folded in; the helper read 73k tokens at
+  its end.
+- Whole-app samples of the dev build swing by a point or two between identical minutes, more than
+  the Room's share, so the renderer's main-thread time (DevTools' TaskDuration) was compared
+  instead: 1.28% of a core with the Room closed, the same with the log on and the Room closed, 1.33%
+  with the Room open (resting pets, the lane, meters, the log), and 2.49% while a time-lapse played
+  at a minute a second. A hook with live steps on takes about 2.5 µs.
+- Running the Hermes CLI with a fresh `HERMES_HOME` against the self-updating install made Hermes
+  finish what it took for an interrupted update, which rebuilt the TUI, the web UI and the desktop
+  app from the installed checkout and reinstalled `/Applications/Hermes.app`; test homes now point
+  at an installed runtime only once that home is set up, or use a project plugin in the person's own
+  home.
+
+Phase 3 alternatives considered:
+
+- **Rejected: one switch for the lane and live steps.** It would widen, without asking, what those
+  who turned the lane on in phase 2 agreed to.
+- **Rejected: the per-launch `ui` token in an always-written file.** Any process of the user could
+  read it and drive the interface; the activity token can only report.
+- **Rejected: events from the plugin to the gateway.** Plugins cannot send gateway events (ADR-014),
+  and the processes outside Herald are not Herald's backend anyway.
+- **Rejected: logging from the Room's window, or in main.** The Room's window is open only some of
+  the day and in panels mode is a second writer; main has neither the gateway client nor the
+  reducer. The Hermes window already has both.
+- **Rejected: titles in the log.** They are often the person's own first words; a replay names its
+  pets by kind.
+- **Rejected: a bigger fixed cap for every sheet.** Unheld sheets would take memory for nothing; the
+  views that hold sheets bound what is decoded, under a ceiling.
+
+Changes upstream that would help (not proposed there):
+
+- A time, and a seq the Room can rely on everywhere, on every gateway event frame: the Room stamps
+  frames when they arrive, up to ten seconds late for an idle session.
+- A helper's target and its running token and cost counts on `subagent.*` events, not only when it
+  completes: today a helper's tool shows without what it works on, and its meter only at its end.
+- A side-effect-free call to observe a session's live state and open requests without attaching,
+  touching `last_active` or replaying requests to the caller's handlers.
+- A turn-start hook without the message, `on_session_start` for resumed sessions, `child_subagent_id`
+  on `subagent_stop`, and a session id on every approval hook.
+- Not working out `post_tool_call`'s status from the result when no consumer asks for it.
+- A fresh `HERMES_HOME` that does not set off the install's update tail.
+
 **Known limits.** Times are when the Room received a frame: up to a second late for a working
 session and ten for an idle one. A session counts as a mission only once it keeps a todo list. With
 `display.tool_progress` off, pets cannot show tools or areas. A session's ring keeps 512 frames, so
@@ -1287,3 +1448,13 @@ only while it is open in Herald, and meetings are found only in the Office and C
 screensaver knows of Herald Slides presenting and of the pet put away, not of another app sharing
 the screen. Commands from an older bridge carry no session, so their agents find desks by their
 steps alone.
+
+Live steps come only from Hermes processes on this computer that load Herald's bridge plugin from
+this Hermes home (or, for a profile, from the root home); a profile's sessions are not in the lane's
+list, so they show with no title. A tool call that takes milliseconds may end before its pet has
+walked anywhere. An approval in a process where Hermes binds no session id is not shown, and a sign
+or a busy turn that hears nothing for ten minutes goes back to coarse. Two Heralds on one account
+serve one socket path, so only the one started last hears live steps. The activity log holds what
+the Room showed while the Hermes window fed it: a reload, a lost connection or a closed Herald is a
+gap, a day is the local day it was written on, and a replay names pets by kind. Cost meters show a
+helper's tokens only once it finishes, and the total is of the work in the room now, not of a day.
