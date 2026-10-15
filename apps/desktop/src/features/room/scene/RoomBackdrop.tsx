@@ -49,7 +49,8 @@ const DESK_KINDS: Partial<Record<RoomArea, string>> = {
 }
 
 export const LANE_TITLE = 'Outside Herald'
-export const LANE_NOTE = "Coarse: titles and activity from Hermes's session list, once a minute"
+export const LANE_NOTE = 'Coarse: titles and activity, read once a minute'
+const LANE_ABOUT = "Hermes work outside Herald, from Hermes's session list: titles and whether each is active, read once a minute. The room shows no steps for it."
 
 const box = (rect: Rect) => ({ left: rect.x, top: rect.y, width: rect.width, height: rect.height })
 
@@ -100,7 +101,7 @@ function Bench({ station, glowing, still, words }: Drawn) {
   )
 }
 
-/** The Automations corner: a timetable board on a low stand, lit while a run is under way. */
+/** The Automations corner: a timetable board on a low stand, lit while a run is under way; its pets stand at its left end. */
 function Board({ station, glowing, still, words, unit }: Drawn & { unit: number }) {
   const { rect } = station
   const face = Math.round(rect.height * 0.7)
@@ -108,7 +109,7 @@ function Board({ station, glowing, still, words, unit }: Drawn & { unit: number 
   return (
     <div className="absolute" style={box(rect)} title={words ? station.name : undefined}>
       <div
-        className="glass-card absolute inset-x-[6%] top-0 flex items-center justify-center gap-[6%] rounded-lg"
+        className="glass-card absolute inset-x-[6%] top-0 flex items-center justify-end gap-[6%] rounded-lg pr-[9%]"
         style={{ height: face, transitionDuration: still ? '0ms' : '700ms', ...(glowing ? glow('var(--color-progress)') : {}) }}
       >
         <IconRepeat size={Math.round(unit * 0.3)} stroke={1.6} className={glowing ? 'text-progress' : 'text-fg-3'} />
@@ -170,7 +171,7 @@ function Lane({ station, words }: Drawn) {
   return (
     <div className="absolute border-l border-line bg-black/20" style={box(station.rect)}>
       {words && (
-        <div className="flex flex-col gap-0.5 px-3 pt-2.5" style={{ height: LANE_HEADER }} title={LANE_NOTE}>
+        <div className="pointer-events-auto flex flex-col gap-0.5 px-3 pt-2.5" style={{ height: LANE_HEADER }} title={LANE_ABOUT}>
           <span className="flex items-center gap-1.5 text-[11.5px] leading-tight font-semibold text-fg-2">
             <IconBroadcast size={13} className="shrink-0 text-fg-3" />
             <span className="truncate">{LANE_TITLE}</span>

@@ -330,8 +330,11 @@ function jobOf(raw: unknown): RoomCronJob | null {
   return job && job.paused && eventRuleFor(job.id) ? { ...job, paused: false } : job
 }
 
-/** The job list, then the latest run of each job whose record moved or whose run is due. */
-async function readAutomations(dueRuns: readonly string[]): Promise<void> {
+/**
+ * The job list, then the latest run of each job whose record moved or whose run is due; after
+ * `cron.changed` (`all`), of every job, as a run can start without its job's record showing it.
+ */
+async function readAutomations(dueRuns: readonly string[], all = false): Promise<void> {
   const round = generation
   const sentAt = Date.now()
 
@@ -347,7 +350,7 @@ async function readAutomations(dueRuns: readonly string[]): Promise<void> {
     }
 
     const moved = jobs.filter(job => jobSignatures.get(job.key) !== cronJobSignature(job)).map(job => job.key)
-    const reading = jobs.filter(job => moved.includes(job.key) || dueRuns.includes(job.key))
+    const reading = jobs.filter(job => all || moved.includes(job.key) || dueRuns.includes(job.key))
     const runs: Record<string, RoomCronRun | null> = {}
 
     await Promise.all(
@@ -366,8 +369,8 @@ async function readAutomations(dueRuns: readonly string[]): Promise<void> {
     }
 
     for (const job of jobs) {
-      if (moved.includes(job.key)) {
-        // A run starts a moment after its job's record moves: read once more, soon.
+      if (moved.includes(job.key) || (all && job.key in runs && !runs[job.key]?.active)) {
+        // A run's session starts a moment after the scheduler claims it: read once more, soon.
         clock.runsWanted[job.key] = Date.now() + ROOM_TIMING.runsRecheckMs
       } else if (job.key in runs) {
         delete clock.runsWanted[job.key]
@@ -494,7 +497,7 @@ function runDue(now: number): void {
   }
 
   if (!inflight.automations && (due.automations <= now || dueRuns.length > 0)) {
-    void readAutomations(dueRuns)
+    void readAutomations(dueRuns, clock.jobsChangedAt !== null && clock.jobsChangedAt + ROOM_TIMING.jobsChangedMs <= now)
   }
 
   if (!inflight.elsewhere && due.elsewhere <= now) {

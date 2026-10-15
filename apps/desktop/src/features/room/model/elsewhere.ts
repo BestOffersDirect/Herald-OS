@@ -28,6 +28,7 @@ const CRON_RUN = /^cron_(.+)_\d{8}_\d{6}$/
 /** Where a session runs, by its source; anything else is another Hermes app. */
 const WHERE: Record<string, string> = {
   cli: 'the Hermes CLI',
+  oneshot: 'the Hermes CLI',
   tui: 'the Hermes TUI',
   desktop: "Hermes's desktop app",
   local: 'Hermes',

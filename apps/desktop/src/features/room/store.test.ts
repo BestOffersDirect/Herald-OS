@@ -742,6 +742,27 @@ describe('phase 2 feeds', () => {
     expect(store.$room.get().agents['a::j1'].automation).toMatchObject({ running: false, lastOutcome: 'ok' })
   })
 
+  it('reads every job’s latest run after cron.changed, as a run can start without its job’s record showing it', async () => {
+    hermes.jobs = [{ id: 'j1', name: 'Morning digest', state: 'scheduled', enabled: true, next_run_at: 1_750_000_100 }, { id: 'j2', name: 'Weekly report', state: 'scheduled', enabled: true, next_run_at: 1_750_500_000 }]
+    const { store, retain } = await load()
+
+    retain()
+    await vi.advanceTimersByTimeAsync(6_000)
+    hermes.rest = []
+    hermes.runs = { j2: [{ id: 'cron_j2_20260101_000000', started_at: Date.now() / 1000, ended_at: null, is_active: true }] }
+
+    for (const handler of hermes.live) {
+      handler({ type: 'cron.changed', payload: {} })
+    }
+
+    await vi.advanceTimersByTimeAsync(1_000)
+
+    expect(restCalls('/api/cron/jobs/j1/runs')).toHaveLength(1)
+    expect(restCalls('/api/cron/jobs/j2/runs')).toHaveLength(1)
+    expect(store.$room.get().agents['a::j2']).toMatchObject({ phase: 'tool', step: 'running' })
+    expect(store.$room.get().agents['a::j1']).toMatchObject({ phase: 'idle' })
+  })
+
   it('never reads the session database until the lane is on, reads it at most once a minute, and empties the lane when it is turned off', async () => {
     hermes.stored = [
       { id: 'tg1', source: 'telegram', title: 'Support bot', preview: 'never kept', is_active: true, last_active: T0 / 1000, started_at: T0 / 1000 - 60 },

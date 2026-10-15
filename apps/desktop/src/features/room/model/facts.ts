@@ -59,9 +59,9 @@ function automationFacts(agent: RoomAgent, now: number): RoomFact[] {
     facts.push({ kind: 'running', text: since >= 60_000 ? `running for ${spanOf(since)}` : 'running now', trace })
   } else if (job.lastRunAt !== null) {
     const ago = now - job.lastRunAt
-    const outcome = job.lastOutcome === 'failed' ? ', failed' : job.lastOutcome === 'ok' ? ', done' : ''
+    const when = ago >= 60_000 ? `${spanOf(ago)} ago` : 'just now'
 
-    facts.push({ kind: 'lastRun', text: `${ago >= 60_000 ? `last run ${spanOf(ago)} ago` : 'last run just now'}${outcome}`, trace })
+    facts.push({ kind: 'lastRun', text: job.lastOutcome === 'failed' ? `failed ${when}` : `ran ${when}`, trace })
   } else {
     facts.push({ kind: 'lastRun', text: 'not run yet', trace })
   }

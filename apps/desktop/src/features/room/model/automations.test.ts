@@ -9,7 +9,7 @@ import type { RoomState } from './types.ts'
 const T0 = Date.UTC(2026, 9, 15, 3, 0, 0)
 const MIN = 60_000
 
-const job = (patch: Partial<RoomCronJob> = {}): RoomCronJob => ({ key: ':job1', id: 'job1', profile: null, name: 'Morning digest', paused: false, lastRunAt: null, lastOutcome: null, nextRunAt: null, ...patch })
+const job = (patch: Partial<RoomCronJob> = {}): RoomCronJob => ({ key: ':job1', id: 'job1', profile: null, name: 'Morning digest', paused: false, lastRunAt: null, lastOutcome: null, nextRunAt: null, claimed: false, ...patch })
 
 type Runs = Extract<RoomInput, { type: 'automations' }>['runs']
 
@@ -34,7 +34,7 @@ describe('a cron job, cut down', () => {
       profile: 'work'
     })
 
-    expect(parsed).toEqual({ key: 'work:abc123', id: 'abc123', profile: 'work', name: 'Morning digest', paused: false, lastRunAt: Date.UTC(2026, 9, 15, 2), lastOutcome: 'ok', nextRunAt: 1_792_000_000_000 })
+    expect(parsed).toEqual({ key: 'work:abc123', id: 'abc123', profile: 'work', name: 'Morning digest', paused: false, lastRunAt: Date.UTC(2026, 9, 15, 2), lastOutcome: 'ok', nextRunAt: 1_792_000_000_000, claimed: false })
     expect(JSON.stringify(parsed)).not.toMatch(/inbox|secret|telegram|Traceback/)
   })
 
@@ -42,6 +42,7 @@ describe('a cron job, cut down', () => {
     expect(roomCronJob({ id: 'a', state: 'paused' })?.paused).toBe(true)
     expect(roomCronJob({ id: 'a', enabled: false })?.paused).toBe(true)
     expect(roomCronJob({ id: 'a', last_status: 'error' })?.lastOutcome).toBe('failed')
+    expect(roomCronJob({ id: 'a', fire_claim: { by: 'gateway', at: '2026-10-15T03:00:00Z' } })?.claimed).toBe(true)
     expect(roomCronJob({ name: 'no id' })).toBeNull()
   })
 
@@ -55,6 +56,7 @@ describe('a cron job, cut down', () => {
   it('moves its signature when a run starts or ends', () => {
     expect(cronJobSignature(job())).not.toBe(cronJobSignature(job({ lastRunAt: T0 })))
     expect(cronJobSignature(job())).not.toBe(cronJobSignature(job({ nextRunAt: T0 })))
+    expect(cronJobSignature(job())).not.toBe(cronJobSignature(job({ claimed: true })))
     expect(cronJobSignature(job())).toBe(cronJobSignature(job({ name: 'Renamed' })))
   })
 })
@@ -90,13 +92,13 @@ describe('automations in the room', () => {
 
     state = run(state, automations([job({ lastRunAt: T0 + 4 * MIN, lastOutcome: 'ok' })], { ':job1': { id: 'r1', startedAt: T0, endedAt: T0 + 4 * MIN, active: false, failed: false } }, T0 + 4 * MIN))
     expect(state.agents['a::job1']).toMatchObject({ phase: 'idle', area: 'automations', step: null })
-    expect(factsOf(state.agents['a::job1'], state, T0 + 124 * MIN).map(fact => fact.text)).toEqual(['last run 2 hours ago, done'])
+    expect(factsOf(state.agents['a::job1'], state, T0 + 124 * MIN).map(fact => fact.text)).toEqual(['ran 2 hours ago'])
   })
 
   it('says when a job failed, was never run or is paused', () => {
     const state = run(EMPTY_ROOM, automations([job({ key: ':a', id: 'a', lastRunAt: T0, lastOutcome: 'failed' }), job({ key: ':b', id: 'b', name: 'Weekly report', paused: true })], {}, T0 + 30_000))
 
-    expect(factsOf(state.agents['a::a'], state, T0 + 30_000).map(fact => fact.text)).toEqual(['last run just now, failed'])
+    expect(factsOf(state.agents['a::a'], state, T0 + 30_000).map(fact => fact.text)).toEqual(['failed just now'])
     expect(factsOf(state.agents['a::b'], state, T0 + 30_000).map(fact => fact.text)).toEqual(['not run yet', 'paused'])
   })
 

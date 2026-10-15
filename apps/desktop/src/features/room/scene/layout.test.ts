@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ROOM_AREAS, type RoomAgent } from '../model/types.ts'
-import { AREA_DEFS, type AreaDef, assignSlots, BUBBLE_HEIGHT, BUBBLE_RISE, depthOrder, layoutRoom, MAX_PETS, pickShown, type Rect, type SceneLayout, slotPoint, stationOf, wallOf } from './layout.ts'
+import { AREA_DEFS, type AreaDef, assignSlots, BUBBLE_HEIGHT, BUBBLE_RISE, depthOrder, laneCapacity, layoutRoom, MAX_PETS, pickShown, type Rect, type SceneLayout, slotPoint, stationOf, tagWidth, wallOf } from './layout.ts'
 
 function agent(id: string, patch: Partial<RoomAgent> = {}): RoomAgent {
   return {
@@ -292,5 +292,67 @@ describe('pickShown', () => {
 
     expect(pickShown(agents, 1, new Set(['b'])).shown.map(entry => entry.id)).toEqual(['b'])
     expect(pickShown(agents, 2, new Set()).shown.map(entry => entry.id).sort()).toEqual(['a', 'c'])
+  })
+})
+
+describe('desks, the lane and the Automations board', () => {
+  const desks = [
+    { id: 'docs:a', area: 'docs' as const, name: 'Launch plan' },
+    { id: 'docs:b', area: 'docs' as const, name: 'Notes' },
+    { id: 'canvas:c', area: 'canvas' as const, name: 'Poster' }
+  ]
+
+  it('stands each open document as a desk below its app, with a place on either side for agents meeting there', () => {
+    const layout = layoutRoom(1100, 720, AREA_DEFS, { desks })
+    const docs = stationOf(layout, 'docs')
+    const first = stationOf(layout, 'desk:docs:a')
+    const second = stationOf(layout, 'desk:docs:b')
+    const [right, left, front] = [0, 1, 2].map(slot => slotPoint(layout, 'desk:docs:a', slot))
+
+    expect(first).toMatchObject({ wall: 'desk', area: 'docs', label: 'Launch plan' })
+    expect(stationOf(layout, 'desk:canvas:c')).toMatchObject({ wall: 'desk', area: 'canvas' })
+    expect(first.rect.y).toBeGreaterThan(docs.anchor.y)
+    expect(second.rect.y).toBeGreaterThan(first.rect.y)
+    expect(Math.abs(first.rect.x + first.rect.width / 2 - (docs.rect.x + docs.rect.width / 2))).toBeLessThanOrEqual(1)
+    expect(right.x).toBeGreaterThan(first.rect.x + first.rect.width)
+    expect(left.x).toBeLessThan(first.rect.x)
+    expect(right.x - left.x).toBeGreaterThanOrEqual(tagWidth(layout.pet))
+    expect(front.y).toBeGreaterThan(right.y)
+    expect(docs.rows).toBe(1)
+    expect(stationOf(layout, 'sheets').rows).toBeUndefined()
+  })
+
+  it('stands only as many desks as fit between the station and the front of the room', () => {
+    const many = Array.from({ length: 6 }, (_, index) => ({ id: `docs:${index}`, area: 'docs' as const, name: `Doc ${index}` }))
+    const short = layoutRoom(1100, 520, AREA_DEFS, { desks: many })
+    const tall = layoutRoom(1100, 1400, AREA_DEFS, { desks: many })
+    const count = (layout: SceneLayout) => layout.stations.filter(station => station.wall === 'desk').length
+
+    expect(count(short)).toBeGreaterThanOrEqual(1)
+    expect(count(short)).toBeLessThan(count(tall))
+    expect(stationOf(short, 'desk:docs:5').id).toBe('lounge')
+  })
+
+  it('gives the lane the right edge, outside the room, only while it is on', () => {
+    const off = layoutRoom(1100, 620)
+    const on = layoutRoom(1100, 620, AREA_DEFS, { lane: true })
+    const points = [0, 1, 2].map(slot => slotPoint(on, 'elsewhere', slot))
+
+    expect(off.lane).toBeNull()
+    expect(laneCapacity(off)).toBe(0)
+    expect(on.lane).toMatchObject({ x: on.wall.width, y: 0, height: 620 })
+    expect(on.width).toBe(1100)
+    expect(on.wall.width).toBeLessThan(off.wall.width)
+    expect(laneCapacity(on)).toBeGreaterThan(0)
+    expect(points.every(point => point.x > on.wall.width && point.x < on.width)).toBe(true)
+    expect(points[1].y).toBeGreaterThan(points[0].y)
+  })
+
+  it('stands automations at the left end of their board, clear of its face', () => {
+    const layout = layoutRoom(1100, 620)
+    const board = stationOf(layout, 'automations')
+
+    expect(board.wall).toBe('front')
+    expect(slotPoint(layout, 'automations', 0).x).toBeLessThan(board.rect.x + board.rect.width / 2)
   })
 })

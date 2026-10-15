@@ -25,22 +25,25 @@ export function RoomScreensaver() {
   const assignment = useRoomAssignment(agents)
 
   return (
-    <RoomScene
-      agents={agents}
-      handoffs={state.handoffs}
-      assignment={assignment}
-      installed={info.installed}
-      motion={reduced ? 'still' : prefs.motion}
-      active={live}
-      settled={state.updatedAt > 0}
-      facts={NO_FACTS}
-      desks={desks}
-      lane={prefs.elsewhere}
-      chrome={false}
-      {...screensaverView(prefs)}
-      onOpen={nothing}
-      onAnswer={nothing}
-      className="absolute inset-0"
-    />
+    <>
+      <div className="absolute inset-0 bg-black/30" />
+      <RoomScene
+        agents={agents}
+        handoffs={state.handoffs}
+        assignment={assignment}
+        installed={info.installed}
+        motion={reduced ? 'still' : prefs.motion}
+        active={live}
+        settled={state.updatedAt > 0}
+        facts={NO_FACTS}
+        desks={desks}
+        lane={prefs.elsewhere}
+        chrome={false}
+        {...screensaverView(prefs)}
+        onOpen={nothing}
+        onAnswer={nothing}
+        className="absolute inset-0"
+      />
+    </>
   )
 }

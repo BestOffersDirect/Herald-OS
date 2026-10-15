@@ -215,7 +215,9 @@ export function layoutRoom(width: number, height: number, defs: readonly AreaDef
     const fit = Math.max(1, Math.floor(Math.max(0, frontTop - pad - first) / deskStep) + 1)
     const here = (extra.desks ?? []).filter(desk => desk.area === station.area).slice(0, fit)
     const table = { width: round(Math.min(station.rect.width * 0.5, pet.width * 0.9)), height: round(unit * 0.42) }
-    const left = round(station.rect.x + station.rect.width / 2 - (table.width + pet.width * 0.9) / 2)
+    const centre = station.rect.x + station.rect.width / 2
+    // Agents meeting at a desk stand on either side of it, far enough apart that their name tags never meet.
+    const across = Math.max(round(table.width + pet.width * 0.9), tagWidth(pet) + 12)
 
     // The station's own queue keeps to its first row: its desks stand below it.
     if (here.length > 0) {
@@ -231,14 +233,14 @@ export function layoutRoom(width: number, height: number, defs: readonly AreaDef
         label: desk.name,
         name: desk.name,
         wall: 'desk',
-        rect: { x: left, y: feet - table.height, width: table.width, height: table.height },
-        anchor: { x: round(left + table.width + pet.width * 0.45), y: feet },
-        along: { x: 1, y: 0 },
+        rect: { x: round(centre - table.width / 2), y: feet - table.height, width: table.width, height: table.height },
+        anchor: { x: round(centre + across / 2), y: feet },
+        along: { x: -1, y: 0 },
         both: false,
         away: { x: 0, y: 1 },
-        spacing,
+        spacing: across,
         rowStep,
-        perRow: 1,
+        perRow: 2,
         stagger,
         rows: 2
       })
@@ -281,17 +283,19 @@ export function layoutRoom(width: number, height: number, defs: readonly AreaDef
   furniture.forEach(({ def, width: itemWidth, height: itemHeight }) => {
     const itemW = round(itemWidth * squeeze)
     const rect: Rect = { x: round(cursor), y: bottom - 8 - itemHeight, width: itemW, height: itemHeight }
+    // Pets sit along a bench or sofa; at the Automations board they stand at its left end, clear of its face.
+    const board = def.id === 'automations'
     cursor += itemW + between
     stations.push({
       ...base(def),
       rect,
-      anchor: { x: round(rect.x + rect.width / 2), y: round(rect.y + rect.height * 0.6) },
+      anchor: { x: round(board ? rect.x + pet.width * 0.5 : rect.x + rect.width / 2), y: round(rect.y + rect.height * 0.6) },
       along: inward(rect),
-      both: true,
+      both: !board,
       away: { x: 0, y: -1 },
       spacing,
       rowStep,
-      perRow: clamp(1 + 2 * Math.floor((rect.width / 2 + pet.width * 0.2) / spacing), 1, 5),
+      perRow: board ? 1 : clamp(1 + 2 * Math.floor((rect.width / 2 + pet.width * 0.2) / spacing), 1, 5),
       stagger
     })
   })

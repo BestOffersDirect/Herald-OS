@@ -249,7 +249,7 @@ describe('RoomScene', () => {
     expect(host.textContent).toContain('Support bot')
     expect(host.textContent).toContain('Telegram · active now')
     expect(host.textContent).toContain('Outside Herald')
-    expect(host.textContent).toContain("Coarse: titles and activity from Hermes's session list, once a minute")
+    expect(host.textContent).toContain('Coarse: titles and activity, read once a minute')
     expect(button('Open Support bot in Hermes')).toBeNull()
 
     render({ agents: [], lane: true })

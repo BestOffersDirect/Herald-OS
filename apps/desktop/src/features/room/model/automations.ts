@@ -21,6 +21,8 @@ export interface RoomCronJob {
   lastRunAt: number | null
   lastOutcome: 'ok' | 'failed' | null
   nextRunAt: number | null
+  /** A scheduler has claimed a run of it, when the record says so. */
+  claimed: boolean
 }
 
 /** A job's latest run: when it started and ended, and whether Hermes counts it as still going. */
@@ -79,7 +81,8 @@ export function roomCronJob(raw: unknown): RoomCronJob | null {
     paused: job.state === 'paused' || job.enabled === false,
     lastRunAt: timeOf(job.last_run_at),
     lastOutcome: status ? (failed(status) ? 'failed' : 'ok') : null,
-    nextRunAt: timeOf(job.next_run_at)
+    nextRunAt: timeOf(job.next_run_at),
+    claimed: Boolean(job.fire_claim || job.run_claim)
   }
 }
 
@@ -97,7 +100,7 @@ export function roomCronRun(raw: unknown): RoomCronRun | null {
 
 /** What the job's records say changed: a job that moves is read again, as a run may have started or ended. */
 export function cronJobSignature(job: RoomCronJob): string {
-  return [job.paused ? 1 : 0, job.lastRunAt ?? '-', job.lastOutcome ?? '-', job.nextRunAt ?? '-'].join(':')
+  return [job.paused ? 1 : 0, job.claimed ? 1 : 0, job.lastRunAt ?? '-', job.lastOutcome ?? '-', job.nextRunAt ?? '-'].join(':')
 }
 
 /**
