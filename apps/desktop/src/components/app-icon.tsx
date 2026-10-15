@@ -87,6 +87,13 @@ const PATHS: Record<AppIconId, React.ReactNode> = {
       <path d="M9 12.2v-1.7M12 12.2V8.3M15 12.2v-2.6M12 15.5v2.6M8.8 20.5l3.2-2.4 3.2 2.4" />
     </>
   ),
+  room: (
+    <>
+      <path d="M4 11a2 2 0 0 1 2 2v1h12v-1a2 2 0 1 1 4 0v5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2" />
+      <path d="M4 11V8a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v3" />
+      <path d="M12 5v9" />
+    </>
+  ),
   office: (
     <>
       <rect x="3.5" y="3.5" width="7.5" height="9" rx="1.6" />

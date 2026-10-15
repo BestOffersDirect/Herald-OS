@@ -55,6 +55,7 @@ export const zhCN: Translation = {
   'app.docs': 'Herald Docs',
   'app.sheets': 'Herald Sheets',
   'app.slides': 'Herald Slides',
+  'app.room': '宠物小屋',
   'app.applications': '应用程序',
 
   'space.personal': '个人',
@@ -278,6 +279,7 @@ export const zhCN: Translation = {
   'settings.section.general': '通用',
   'settings.section.appearance': '外观',
   'settings.section.pet': '宠物',
+  'settings.section.room': '宠物小屋',
   'settings.section.software': '软件',
   'settings.section.plugins': '插件',
   'settings.section.agents': 'Hermes 与智能体',
@@ -295,6 +297,8 @@ export const zhCN: Translation = {
   'settings.appearance.subtitle': '主题、强调色、壁纸、字体和菜单栏。',
   'settings.pet.subtitle':
     '桌面上的 Hermes petdex 吉祥物：它会显示 Hermes 正在做什么，举着待批准的请求，接收提问和文件，又不碍事。选哪只宠物、大小和开关都是 Hermes 自己的设置，在 Hermes CLI、TUI 和 Hermes 桌面版中都一样。',
+  'settings.room.subtitle':
+    '一个窗口：Hermes 正在处理的每个对话、任务和助手，都化作一只宠物站在里面。宠物小屋只借用已为 Hermes 安装的宠物：它从不安装宠物，也从不更换 Hermes 显示的宠物（那在“设置 > 宠物”中）。',
   'settings.software.subtitleLinux': '工具、编程语言、应用和游戏，以适合本机的方式安装。',
   'settings.software.subtitleMac': '适用于这台 Mac 的编程智能体和本地模型应用。',
   'settings.plugins.subtitle': '用于菜单栏、概览和独立窗口的小组件。每个都在沙盒中运行，只能获得你允许的权限。',

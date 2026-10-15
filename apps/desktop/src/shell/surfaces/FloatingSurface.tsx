@@ -17,6 +17,7 @@ const CanvasWindow = lazy(() => import('../../features/canvas/CanvasWindow.tsx')
 const DocsWindow = lazy(() => import('../../features/office/docs/DocsWindow.tsx').then(m => ({ default: m.DocsWindow })))
 const SheetsWindow = lazy(() => import('../../features/office/sheets/SheetsWindow.tsx').then(m => ({ default: m.SheetsWindow })))
 const SlidesWindow = lazy(() => import('../../features/office/slides/SlidesWindow.tsx').then(m => ({ default: m.SlidesWindow })))
+const RoomWindow = lazy(() => import('../../features/room/RoomWindow.tsx').then(m => ({ default: m.RoomWindow })))
 
 const isFloatingAppId = (value: string): value is FloatingAppId => FLOATING_APPS.some(app => app.id === value)
 
@@ -45,6 +46,8 @@ function FloatingContent({ appId, payload }: { appId: FloatingAppId; payload: Re
       return <SheetsWindow payload={payload} />
     case 'slides':
       return <SlidesWindow payload={payload} />
+    case 'room':
+      return <RoomWindow />
     default:
       return null
   }

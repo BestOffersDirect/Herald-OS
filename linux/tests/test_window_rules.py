@@ -77,7 +77,7 @@ def test_the_shell_s_dialogs_float_in_a_checkout_and_packaged():
 
 
 def test_the_shell_s_own_windows_are_not_taken_for_dialogs():
-    for title in ("Herald OS", "Herald OS · Docs", "Herald OS · Sheets", "Herald OS · Slides", "Herald OS · Canvas", "Herald OS · Studio", "Preview", "YouTube"):
+    for title in ("Herald OS", "Herald OS · Docs", "Herald OS · Sheets", "Herald OS · Slides", "Herald OS · Canvas", "Herald OS · Studio", "Herald OS · Pet Room", "Preview", "YouTube"):
         assert FLOATS not in props("herald-os", title), title
 
 
@@ -89,6 +89,15 @@ def test_office_windows_tile_at_three_quarters_of_the_screen():
         rules = props("herald-os", title)
         assert "default-column-width { proportion 0.75; }" in rules, title
         assert FLOATS not in rules, title
+
+
+def test_the_pet_room_tiles_at_a_third_of_the_screen_beside_the_work_and_is_never_taken_for_the_pet():
+    title = re.search(r"room: \{ title: '([^']+)'", (DESKTOP / "electron" / "shell" / "mode.ts").read_text()).group(1)
+    for app_id in ("herald-os", "Herald OS"):
+        rules = props(app_id, title)
+        assert _last(rules, "default-column-width") == "default-column-width { proportion 0.33333; }"
+        assert FLOATS not in rules
+        assert "border { off; }" not in rules
 
 
 def test_the_audience_window_opens_full_screen_and_leaves_the_keys_to_the_presenter_view():

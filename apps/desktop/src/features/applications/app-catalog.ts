@@ -54,6 +54,7 @@ const ORDER: readonly Slot[] = [
   { kind: 'featured', label: 'Calendar' },
   { kind: 'featured', label: 'Notes' },
   { kind: 'hermes', appId: 'missions' },
+  { kind: 'hermes', appId: 'room', keywords: ['petdex', 'agents', 'helpers', 'activity'] },
   { kind: 'hermes', appId: 'memory' },
   { kind: 'native', label: 'Studio', names: STUDIO_NAMES, category: 'creative' },
   { kind: 'hermes', appId: 'canvas' },

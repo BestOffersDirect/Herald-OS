@@ -52,6 +52,7 @@ export const en = {
   'app.docs': 'Herald Docs',
   'app.sheets': 'Herald Sheets',
   'app.slides': 'Herald Slides',
+  'app.room': 'Pet Room',
   'app.applications': 'Applications',
 
   'space.personal': 'Personal',
@@ -283,6 +284,7 @@ export const en = {
   'settings.section.general': 'General',
   'settings.section.appearance': 'Appearance',
   'settings.section.pet': 'Pet',
+  'settings.section.room': 'Pet Room',
   'settings.section.software': 'Software',
   'settings.section.plugins': 'Plugins',
   'settings.section.agents': 'Hermes & agents',
@@ -300,6 +302,8 @@ export const en = {
   'settings.appearance.subtitle': 'Theme, accent, wallpaper, fonts and the menu bar.',
   'settings.pet.subtitle':
     "Hermes's petdex mascot on the desktop: it shows what Hermes is doing, holds up approvals, takes questions and files, and stays out of the way. Which pet, its size and on or off are Hermes's own settings, the same in the Hermes CLI, the TUI and Hermes's desktop app.",
+  'settings.room.subtitle':
+    'A window where every conversation, mission and helper Hermes is working on stands as a pet. The Room borrows the pets installed for Hermes: it never installs one and never changes the pet Hermes shows, which is Settings, Pet.',
   'settings.software.subtitleLinux': 'Tools, languages, apps and games, installed the right way for this machine.',
   'settings.software.subtitleMac': 'Coding agents and local model apps for this Mac.',
   'settings.plugins.subtitle': 'Widgets for the menu bar, the Overview and their own windows. Each runs in a sandbox and gets only what you allow.',

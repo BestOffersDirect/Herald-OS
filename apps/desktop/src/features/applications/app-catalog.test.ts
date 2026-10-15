@@ -31,4 +31,12 @@ describe('buildCatalog', () => {
     expect(filterTiles(buildCatalog([]), 'all', 'excel').map(tile => tile.label)).toEqual(['Herald Sheets'])
     expect(filterTiles(buildCatalog([]), 'productivity', 'powerpoint').map(tile => tile.label)).toEqual(['Herald Slides'])
   })
+
+  it('puts the Pet Room after Missions, found by its name and by what it shows', () => {
+    const labels = buildCatalog([]).map(tile => tile.label)
+
+    expect(labels[labels.indexOf('Missions') + 1]).toBe('Pet Room')
+    expect(filterTiles(buildCatalog([]), 'all', 'pet room').map(tile => tile.label)).toEqual(['Pet Room'])
+    expect(filterTiles(buildCatalog([]), 'productivity', 'agents').map(tile => tile.label)).toEqual(['Pet Room'])
+  })
 })

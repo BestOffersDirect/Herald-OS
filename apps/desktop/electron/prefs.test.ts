@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { NOTIFY_DEFAULTS } from '../shared/notify-prefs.ts'
 import { PET_PREFS_DEFAULTS, type PetPrefs } from '../shared/pet.ts'
+import { ROOM_PREFS_DEFAULTS, type RoomPrefs } from '../shared/room.ts'
 import { heraldOsDataDir } from './paths.ts'
 import { adoptLegacyNotify, readPrefs, writePrefs } from './prefs.ts'
 
@@ -120,6 +121,33 @@ describe('the pet in the prefs', () => {
 
     expect(writePrefs({ pet: { hidden: false } as PetPrefs }).pet).toEqual({ ...quiet, hidden: false })
     expect(readPrefs().pet).toEqual({ ...quiet, hidden: false })
+  })
+})
+
+describe('the Pet Room in the prefs', () => {
+  it('reads the defaults when there is nothing stored, or no prefs file at all', () => {
+    expect(readPrefs().room).toEqual(ROOM_PREFS_DEFAULTS)
+
+    store({ theme: 'graphite' })
+    expect(readPrefs().room).toEqual(ROOM_PREFS_DEFAULTS)
+  })
+
+  it('makes a stored one whole: unknown keys, pets that are not one folder name and unknown motions dropped', () => {
+    store({ room: { pets: { conversation: 'boba', mission: '../mochi', robot: 'mochi' }, motion: 'warp', tints: false, sparkle: true } })
+
+    expect(readPrefs().room).toEqual({ ...ROOM_PREFS_DEFAULTS, pets: { ...ROOM_PREFS_DEFAULTS.pets, conversation: 'boba' }, tints: false })
+  })
+
+  it('merges a write field by field and the pets kind by kind, and keeps it through other changes', () => {
+    const calm = { ...ROOM_PREFS_DEFAULTS, pets: { ...ROOM_PREFS_DEFAULTS.pets, conversation: 'boba' }, motion: 'calm' as const }
+
+    expect(writePrefs({ room: calm }).room).toEqual(calm)
+    expect(writePrefs({ room: { pets: { helper: 'mochi' } } as RoomPrefs }).room).toEqual({ ...calm, pets: { ...calm.pets, helper: 'mochi' } })
+    expect(writePrefs({ room: { steps: false } as RoomPrefs }).room).toEqual({ ...calm, pets: { ...calm.pets, helper: 'mochi' }, steps: false })
+
+    writePrefs({ theme: 'graphite' })
+    expect(onDisk()).toMatchObject({ theme: 'graphite', room: { pets: { conversation: 'boba', helper: 'mochi' }, motion: 'calm', steps: false } })
+    expect(readPrefs().room?.pets).toEqual({ ...calm.pets, helper: 'mochi' })
   })
 })
 

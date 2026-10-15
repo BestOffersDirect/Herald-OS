@@ -30,6 +30,9 @@ export const ROOM_PREFS_DEFAULTS: RoomPrefs = {
   steps: true
 }
 
+/** A change to the Room preferences: only the fields it names change, and the pets kind by kind. */
+export type RoomPrefsPatch = Partial<Omit<RoomPrefs, 'pets'>> & { pets?: Partial<Record<RoomKind, string | null>> }
+
 /** A pet's folder name as prefs.json may hold it: one path segment, never a dot-folder. */
 function slugOrNull(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -54,6 +57,18 @@ export function normalizeRoomPrefs(raw: unknown): RoomPrefs {
   }
 }
 
+/** `patch` over `current`, field by field and the pets kind by kind; a field left undefined keeps its value. */
+export function mergeRoomPrefs(current: unknown, patch: unknown): RoomPrefs {
+  const base = record(current)
+  const change = defined(record(patch))
+
+  return normalizeRoomPrefs({ ...base, ...change, pets: { ...record(base.pets), ...defined(record(change.pets)) } })
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+function defined(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined))
 }

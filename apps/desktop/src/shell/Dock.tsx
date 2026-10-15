@@ -12,7 +12,7 @@ import { logFailure } from '../lib/report.ts'
 import { $env, $prefs } from '../store/backend.ts'
 import { notify } from '../store/notifications.ts'
 import { $applicationsOpen } from '../store/surface.ts'
-import { $windows, focusWindow, MAIN_WINDOW_ID, showPage } from '../store/windows.ts'
+import { $windows, focusWindow, MAIN_WINDOW_ID, openApp, showPage } from '../store/windows.ts'
 import { useNativeApps } from '../store/native-apps.ts'
 
 interface DockItem {
@@ -97,6 +97,7 @@ export function Dock() {
 
   const main = windows[MAIN_WINDOW_ID]
   const canvasOpen = Object.values(windows).some(w => w.appId === 'canvas')
+  const roomOpen = Object.values(windows).some(w => w.appId === 'room')
   const officeKey = Object.values(windows)
     .map(w => w.appId)
     .filter(isOfficeApp)
@@ -151,7 +152,8 @@ export function Dock() {
       }
     }
 
-    // A shortcut beside the one in Applications.
+    // Shortcuts beside the ones in Applications.
+    list.push({ id: 'room', label: 'Pet Room', render: () => <span className="icon-tile size-11 rounded-[11px]"><AppGlyph id="room" size={22} /></span>, onClick: () => openApp('room'), running: roomOpen })
     list.push({ id: 'canvas', label: 'Herald Canvas', render: () => <span className="icon-tile size-11 rounded-[11px]"><AppGlyph id="canvas" size={22} /></span>, onClick: () => openInCanvas(), running: canvasOpen })
     // Docs, Sheets and Slides share one entry, so three icons do not crowd the Dock.
     list.push({
@@ -169,7 +171,7 @@ export function Dock() {
 
     return list
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apps, iconFor, main?.phase, platform, canvasOpen, officeKey])
+  }, [apps, iconFor, main?.phase, platform, roomOpen, canvasOpen, officeKey])
 
   const barRef = useRef<HTMLDivElement>(null)
   const { onMove, onLeave } = useDockMagnification(barRef)

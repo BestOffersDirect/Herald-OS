@@ -40,6 +40,7 @@ const SECTION_ALIASES: Record<string, string> = {
   security: 'privacy',
   permissions: 'privacy',
   alerts: 'notifications',
+  'pet room': 'room',
   motion: 'accessibility',
   version: 'about',
   update: 'about',
@@ -140,7 +141,7 @@ export const systemCommands: readonly OsCommand[] = [
   {
     id: 'settings.open',
     title: 'Open Settings',
-    description: 'Open Settings, optionally at a section (general, appearance, pet, agents, usage, voice, privacy, notifications, network, storage, accessibility, about).',
+    description: 'Open Settings, optionally at a section (general, appearance, pet, room, agents, usage, voice, privacy, notifications, network, storage, accessibility, about).',
     tier: 'read',
     args: [
       { name: 'section', type: 'string', description: 'Section name' },

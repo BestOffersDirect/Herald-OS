@@ -8,7 +8,7 @@ import { $env } from '../../store/backend.ts'
 import { useNativeApps } from '../../store/native-apps.ts'
 import { notify } from '../../store/notifications.ts'
 import { $wm, openSurface, wmAction } from '../../store/shell.ts'
-import { showPage } from '../../store/windows.ts'
+import { openApp, showPage } from '../../store/windows.ts'
 import { appById, distinctAppLabel, type FloatingAppId } from '../apps.ts'
 import { isOfficeApp, NativeIcon, pinnedFor, useDockMagnification } from '../Dock.tsx'
 import { DOCK_MENU_NAME, dockMenuFeatures, dockMenuPlacement, dockRect, menuLosesKeys } from './dock-menu.ts'
@@ -270,7 +270,17 @@ export function DockSurface() {
       }
     }
 
-    // A shortcut beside the one in Applications; an open Canvas window belongs to it rather than to an entry of its own.
+    // Shortcuts beside the ones in Applications; an open Pet Room or Canvas window belongs to its shortcut rather than to an entry of its own.
+    const roomWindows = ours.filter(w => ourFloatingAppId(w) === 'room')
+    list.push({
+      id: 'hermes:room',
+      label: 'Pet Room',
+      render: () => <AppTile id="room" size={44} />,
+      onClick: () => (roomWindows.length > 0 ? focusGroup('hermes:room', roomWindows) : openApp('room')),
+      running: roomWindows.length > 0,
+      windows: roomWindows
+    })
+
     const canvasWindows = ours.filter(w => ourFloatingAppId(w) === 'canvas')
     list.push({
       id: 'hermes:canvas',
@@ -299,7 +309,7 @@ export function DockSurface() {
     for (const win of ours) {
       const appId = ourFloatingAppId(win)
 
-      if (appId && appId !== 'canvas' && !isOfficeApp(appId)) {
+      if (appId && appId !== 'room' && appId !== 'canvas' && !isOfficeApp(appId)) {
         floatingGroups.set(appId, [...(floatingGroups.get(appId) ?? []), win])
       }
     }

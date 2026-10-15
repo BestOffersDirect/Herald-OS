@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { IconAccessible, IconApps, IconBell, IconCircleCheckFilled, IconPuzzle, IconDatabase, IconGauge, IconInfoCircle, IconListDetails, IconMicrophone, IconPalette, IconPaw, IconPlayerPause, IconRobot, IconSettings, IconShield, IconWifi } from '@tabler/icons-react'
+import { IconAccessible, IconApps, IconBell, IconCircleCheckFilled, IconPuzzle, IconDatabase, IconGauge, IconInfoCircle, IconListDetails, IconMicrophone, IconPalette, IconPaw, IconPlayerPause, IconRobot, IconSettings, IconShield, IconSofa, IconWifi } from '@tabler/icons-react'
 import { type ComponentType, useEffect, useState } from 'react'
 import type { TextKey } from '../../../shared/i18n.ts'
 import { GlassButton, PageHeader, SearchField } from '../../components/ui/glass.tsx'
@@ -18,6 +18,7 @@ import { PrivacySection } from './sections/PrivacySection.tsx'
 import { $settingsFocus, $settingsSavedAt, type SectionId, SettingsFilterContext } from './sections/shared.tsx'
 import { PluginsSection } from './sections/PluginsSection.tsx'
 import { PetSection } from '../pet/PetSection.tsx'
+import { RoomSection } from '../room/RoomSection.tsx'
 import { SoftwareSection } from './sections/SoftwareSection.tsx'
 import { StorageSection } from './sections/StorageSection.tsx'
 import { UsageSection } from './sections/UsageSection.tsx'
@@ -34,6 +35,7 @@ const SECTIONS: { id: SectionId; label: TextKey; icon: ComponentType<{ size?: nu
   { id: 'general', label: 'settings.section.general', icon: IconSettings, view: GeneralSection },
   { id: 'appearance', label: 'settings.section.appearance', icon: IconPalette, view: AppearanceSection },
   { id: 'pet', label: 'settings.section.pet', icon: IconPaw, view: PetSection },
+  { id: 'room', label: 'settings.section.room', icon: IconSofa, view: RoomSection },
   { id: 'software', label: 'settings.section.software', icon: IconApps, view: SoftwareSection },
   { id: 'plugins', label: 'settings.section.plugins', icon: IconPuzzle, view: PluginsSection },
   { id: 'agents', label: 'settings.section.agents', icon: IconRobot, view: AgentsSection },

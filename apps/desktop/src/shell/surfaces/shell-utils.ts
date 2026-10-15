@@ -23,7 +23,8 @@ const OUR_FLOATING_TITLES: Record<string, FloatingAppId> = {
   'Herald OS · Canvas': 'canvas',
   'Herald OS · Docs': 'docs',
   'Herald OS · Sheets': 'sheets',
-  'Herald OS · Slides': 'slides'
+  'Herald OS · Slides': 'slides',
+  'Herald OS · Pet Room': 'room'
 }
 
 export const OUR_MAIN_TITLE = 'Herald OS'

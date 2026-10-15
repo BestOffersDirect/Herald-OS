@@ -17,10 +17,10 @@ import { useT } from '../../../store/i18n.ts'
 /** Timestamp of the last successful write made from the Settings page. */
 export const $settingsSavedAt = atom(0)
 
-export type SectionId = 'general' | 'appearance' | 'pet' | 'software' | 'plugins' | 'agents' | 'usage' | 'voice' | 'commands' | 'privacy' | 'notifications' | 'network' | 'storage' | 'accessibility' | 'about'
+export type SectionId = 'general' | 'appearance' | 'pet' | 'room' | 'software' | 'plugins' | 'agents' | 'usage' | 'voice' | 'commands' | 'privacy' | 'notifications' | 'network' | 'storage' | 'accessibility' | 'about'
 
 /** Section ids in nav order; kept here (not in SettingsPage) so commands can import them without the page. */
-export const SETTINGS_SECTION_IDS: readonly SectionId[] = ['general', 'appearance', 'pet', 'software', 'plugins', 'agents', 'usage', 'voice', 'commands', 'privacy', 'notifications', 'network', 'storage', 'accessibility', 'about']
+export const SETTINGS_SECTION_IDS: readonly SectionId[] = ['general', 'appearance', 'pet', 'room', 'software', 'plugins', 'agents', 'usage', 'voice', 'commands', 'privacy', 'notifications', 'network', 'storage', 'accessibility', 'about']
 
 /** A command (voice, agent) asked the Settings page to show a section (id) and optionally search. */
 export const $settingsFocus = atom<{ section?: string; query?: string; ts: number } | null>(null)

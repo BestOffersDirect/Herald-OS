@@ -7,6 +7,7 @@ import { normalizeMenuBar } from '../shared/menu-bar.ts'
 import { NOTIFY_DEFAULTS, normalizeNotifyPrefs } from '../shared/notify-prefs.ts'
 import { normalizeCommentName } from '../shared/office/comment-name.ts'
 import { normalizePetPrefs, PET_PREFS_DEFAULTS } from '../shared/pet.ts'
+import { mergeRoomPrefs, normalizeRoomPrefs, ROOM_PREFS_DEFAULTS } from '../shared/room.ts'
 import { normalizeVoicePrefs, VOICE_DEFAULTS } from '../shared/voice-prefs.ts'
 import { heraldOsDataDir } from './paths.ts'
 
@@ -19,6 +20,7 @@ const DEFAULTS: HeraldOSPrefs = {
   crashHelp: CRASH_HELP_DEFAULTS,
   notify: NOTIFY_DEFAULTS,
   pet: PET_PREFS_DEFAULTS,
+  room: ROOM_PREFS_DEFAULTS,
   fullscreenOnLaunch: true,
   reduceMotion: false,
   accent: 'blue',
@@ -54,6 +56,7 @@ export function readPrefs(): HeraldOSPrefs {
       crashHelp: normalizeCrashHelp(parsed.crashHelp),
       notify: normalizeNotifyPrefs(parsed.notify),
       pet: normalizePetPrefs(parsed.pet),
+      room: normalizeRoomPrefs(parsed.room),
       eventAutomations: normalizeEventAutomations(parsed.eventAutomations),
       commentName: normalizeCommentName(parsed.commentName) || undefined,
       ...(parsed.menuBar ? { menuBar: normalizeMenuBar(parsed.menuBar) } : {})
@@ -102,6 +105,7 @@ export function writePrefs(patch: PrefsPatch): HeraldOSPrefs {
     crashHelp: normalizeCrashHelp({ ...current.crashHelp, ...(patch.crashHelp ?? {}) }),
     notify: normalizeNotifyPrefs(notify),
     pet: normalizePetPrefs({ ...current.pet, ...(patch.pet ?? {}) }),
+    room: mergeRoomPrefs(current.room, patch.room),
     ...('commentName' in patch ? { commentName: normalizeCommentName(patch.commentName) || undefined } : {}),
     ...('language' in patch ? { language: languageSetting(patch.language) } : {}),
     ...(patch.menuBar ? { menuBar: normalizeMenuBar({ ...current.menuBar, ...patch.menuBar }) } : {})

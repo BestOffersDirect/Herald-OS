@@ -7,6 +7,7 @@ import type { MenuBarLayout } from './menu-bar.ts'
 import type { OfficeApp } from './office/files.ts'
 import type { PetPrefs } from './pet.ts'
 import type { QrReading } from './qr.ts'
+import type { RoomPrefs } from './room.ts'
 import type { ColorScheme, ThemeColors } from './theme.ts'
 
 /** `waiting`: there is no Hermes Agent to start yet; the shell starts one as soon as it is installed. */
@@ -605,6 +606,8 @@ export interface HeraldOSPrefs {
   commentName?: string
   /** The desktop pet as Herald shows it (which pet, its size and on or off are Hermes's settings). */
   pet?: PetPrefs
+  /** The Pet Room: which installed pet stands for each kind of work, and how much the Room moves. */
+  room?: RoomPrefs
   voice: VoicePrefs
   continuity: ContinuityPrefs
   crashHelp: CrashHelpPrefs
