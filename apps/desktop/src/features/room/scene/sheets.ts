@@ -25,11 +25,16 @@ export function sheetRefs(slugs: Iterable<string>, installed: readonly Installed
   return [...refs.values()]
 }
 
+/** How a held pet's sheet is doing: still loading, ready to draw, or failed (it cannot be read, or the cache has no room for it). */
+export type SheetState = 'loading' | 'ready' | 'failed'
+
 export interface SheetHolder {
   /** Hold exactly these sheets: load the new ones, let go of the others. */
   hold(refs: readonly PetSheetRef[]): void
   /** A held, loaded sheet by the pet's folder name. */
   get(slug: string): CachedSheet | null
+  /** How a held sheet is doing, by the pet's folder name; null for a pet it does not hold. */
+  state(slug: string): SheetState | null
   /** Let go of everything, now and as loads finish. */
   dispose(): void
 }
@@ -39,13 +44,17 @@ interface Held {
   sheet: CachedSheet | null
   loading: boolean
   wanted: boolean
+  /** Why the cache gave nothing: it had no room, or the sheet cannot be read. */
+  failed: 'room' | 'unreadable' | null
 }
 
 /**
  * The sheets one scene draws, borrowed from the shared cache: each acquired once and released once.
- * A sheet the cache had no room for is asked for again when another view lets one go.
+ * A sheet the cache had no room for is asked for again when another view lets one go; one that
+ * cannot be read is not, and is asked for again only when it is held anew. `onChange` runs when a
+ * sheet comes in or fails, to paint again.
  */
-export function holdSheets(cache: Pick<SpriteCache, 'acquire' | 'release' | 'onRelease'>, onLoad: () => void): SheetHolder {
+export function holdSheets(cache: Pick<SpriteCache, 'acquire' | 'release' | 'onRelease' | 'failed'>, onChange: () => void): SheetHolder {
   const held = new Map<string, Held>()
   let disposed = false
 
@@ -61,37 +70,28 @@ export function holdSheets(cache: Pick<SpriteCache, 'acquire' | 'release' | 'onR
   }
 
   const load = (key: string, entry: Held) => {
+    const settle = (sheet: CachedSheet | null, unreadable: boolean) => {
+      const failedBefore = entry.failed !== null
+      entry.loading = false
+      entry.sheet = sheet
+      entry.failed = sheet ? null : unreadable ? 'unreadable' : 'room'
+
+      if (disposed || !entry.wanted) {
+        letGo(key, entry)
+
+        return
+      }
+
+      if (sheet || !failedBefore) {
+        onChange()
+      }
+    }
+
     entry.loading = true
-    cache
-      .acquire(entry.ref)
-      .then(sheet => {
-        entry.loading = false
-
-        if (!sheet) {
-          if (!entry.wanted) {
-            letGo(key, entry)
-          }
-
-          return
-        }
-
-        entry.sheet = sheet
-
-        if (disposed || !entry.wanted) {
-          letGo(key, entry)
-
-          return
-        }
-
-        onLoad()
-      })
-      .catch(() => {
-        entry.loading = false
-
-        if (!entry.wanted) {
-          letGo(key, entry)
-        }
-      })
+    void cache.acquire(entry.ref).then(
+      sheet => settle(sheet, !sheet && cache.failed(key)),
+      () => settle(null, true)
+    )
   }
 
   const stopListening = cache.onRelease(() => {
@@ -100,7 +100,7 @@ export function holdSheets(cache: Pick<SpriteCache, 'acquire' | 'release' | 'onR
     }
 
     for (const [key, entry] of held) {
-      if (entry.wanted && !entry.loading && !entry.sheet) {
+      if (entry.wanted && !entry.loading && entry.failed === 'room') {
         load(key, entry)
       }
     }
@@ -134,7 +134,7 @@ export function holdSheets(cache: Pick<SpriteCache, 'acquire' | 'release' | 'onR
           continue
         }
 
-        const fresh: Held = { ref, sheet: null, loading: true, wanted: true }
+        const fresh: Held = { ref, sheet: null, loading: true, wanted: true, failed: null }
         held.set(key, fresh)
         load(key, fresh)
       }
@@ -143,6 +143,15 @@ export function holdSheets(cache: Pick<SpriteCache, 'acquire' | 'release' | 'onR
       for (const entry of held.values()) {
         if (entry.ref.slug === slug && entry.wanted && entry.sheet) {
           return entry.sheet
+        }
+      }
+
+      return null
+    },
+    state(slug) {
+      for (const entry of held.values()) {
+        if (entry.ref.slug === slug && entry.wanted) {
+          return entry.sheet ? 'ready' : entry.failed ? 'failed' : 'loading'
         }
       }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { InstalledPet } from '../../../shared/pet.ts'
-import { ROOM_PREFS_DEFAULTS, type RoomKind, type RoomPrefs } from '../../../shared/room.ts'
-import { assignPets, kindPets, type PetAssignment } from './assign.ts'
+import { ROOM_KINDS, ROOM_PREFS_DEFAULTS, type RoomKind, type RoomPrefs } from '../../../shared/room.ts'
+import { assignPets, kindPets, type PetAssignment, ROOM_SHEET_CAP } from './assign.ts'
 import { PET_TINTS } from './draw.ts'
 
 const CAP = 4
@@ -129,6 +129,15 @@ describe('assignPets', () => {
     })
     expect(new Set(Object.values(assignPets(agents, installed, prefs(), {}, 1)).map(pet => pet.slug))).toEqual(new Set(['alpha']))
     expect(new Set(Object.values(assignPets(agents, installed, prefs(), {}, 3)).map(pet => pet.slug)).size).toBe(3)
+  })
+
+  it('gives five kinds of work five distinct sheets when five pets are installed', () => {
+    const agents = ROOM_KINDS.map((kind, index) => agent(`${kind}:${index}`, kind))
+    const assigned = assignPets(agents, pets('alpha', 'boba', 'mochi', 'zed', 'kiwi'), prefs(), {}, ROOM_SHEET_CAP)
+
+    expect(ROOM_SHEET_CAP).toBe(5)
+    expect(new Set(Object.values(assigned).map(pet => pet.slug))).toEqual(new Set(['alpha', 'boba', 'mochi', 'zed', 'kiwi']))
+    expect(tintsOf(assigned)).toEqual([null, null, null, null, null])
   })
 
   it('keeps the pets that still fit when the cap shrinks, and stays put when it grows again', () => {

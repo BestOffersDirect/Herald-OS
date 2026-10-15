@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { type CachedSheet, createSpriteCache, type PetSheetRef, SPRITE_CACHE_CAP, sheetKey, spriteCache } from './cache.ts'
+import { type CachedSheet, createSpriteCache, type PetSheetRef, SPRITE_CACHE_CAP, SPRITE_CACHE_MAX, SPRITE_RETRY_MS, sheetKey, spriteCache } from './cache.ts'
 import type { LoadedSheet } from './sheet.ts'
 
 // The default loader reads through the preload bridge, which the shell store looks for when it loads.
@@ -11,16 +11,19 @@ const ref = (slug: string, revision = '1'): PetSheetRef => ({ slug, revision, mi
 
 const sheetFor = (key: string): LoadedSheet => ({ url: `blob:${key}`, width: 1536, height: 1872, layout: { columns: 8, rows: 9, rowNames: [], frames: [] } })
 
-/** A cache over a fake loader: `held` loads wait for `finish`, `broken` ones read as nothing, `throws` ones fail. */
-function harness(cap = 4) {
+/** A cache over a fake loader and clock: `held` loads wait for `finish`, `broken` ones read as nothing, `throws` ones fail. */
+function harness({ cap = SPRITE_CACHE_CAP, max = SPRITE_CACHE_MAX }: { cap?: number; max?: number } = {}) {
   const loads: string[] = []
   const disposed: string[] = []
   const waiting = new Map<string, () => void>()
   const broken = new Set<string>()
   const throws = new Set<string>()
   const held = new Set<string>()
+  let time = 1_000_000
   const cache = createSpriteCache({
     cap,
+    max,
+    now: () => time,
     load: async next => {
       const key = sheetKey(next)
       loads.push(key)
@@ -48,6 +51,9 @@ function harness(cap = 4) {
     finish: async (key: string) => {
       waiting.get(key)?.()
       await Promise.resolve()
+    },
+    advance: (ms: number) => {
+      time += ms
     }
   }
 }
@@ -66,10 +72,12 @@ async function take(cache: ReturnType<typeof harness>['cache'], ...slugs: string
 }
 
 describe('the sprite cache', () => {
-  it('keys a sheet by pet and revision, and holds four sheets in the renderer', () => {
+  it('keys a sheet by pet and revision; the renderer keeps four sheets nobody holds and decodes twelve at most', () => {
     expect(sheetKey({ slug: 'boba', revision: '17:2048' })).toBe('boba@17:2048')
     expect(SPRITE_CACHE_CAP).toBe(4)
+    expect(SPRITE_CACHE_MAX).toBe(12)
     expect(spriteCache.cap).toBe(SPRITE_CACHE_CAP)
+    expect(spriteCache.max).toBe(SPRITE_CACHE_MAX)
   })
 
   it('loads a sheet once and shares it between its holders, even while it is still loading', async () => {
@@ -98,34 +106,80 @@ describe('the sprite cache', () => {
   })
 
   it('finds the cached sheet a loaded sheet belongs to, until it leaves the cache', async () => {
-    const { cache } = harness(1)
+    const { cache } = harness({ cap: 1 })
     const [boba] = await take(cache, 'boba')
 
     expect(cache.find(boba.sheet)).toBe(boba)
     expect(cache.find(sheetFor('boba@1'))).toBeNull()
 
     cache.release(boba.key)
-    await take(cache, 'mochi')
+    const [mochi] = await take(cache, 'mochi')
+    cache.release(mochi.key)
 
     expect(cache.find(boba.sheet)).toBeNull()
     expect(cache.peek(boba.key)).toBeNull()
   })
 
-  it('never decodes more than its cap: a new sheet while every one is held gets null without loading', async () => {
-    const { cache, loads, disposed } = harness(2)
-    await take(cache, 'a', 'b')
+  it('never refuses a sheet for want of room below its ceiling: six pets held at once all load', async () => {
+    const { cache, loads, disposed } = harness()
+    const slugs = ['a', 'b', 'c', 'd', 'e', 'f']
+    const sheets = await Promise.all(slugs.map(slug => cache.acquire(ref(slug))))
 
-    expect(await cache.acquire(ref('c'))).toBeNull()
-    expect(loads).toEqual(['a@1', 'b@1'])
-
-    cache.release('a@1')
-    expect(await cache.acquire(ref('c'))).toMatchObject({ key: 'c@1' })
-    expect(disposed).toEqual(['a@1'])
-    expect(loads).toEqual(['a@1', 'b@1', 'c@1'])
+    expect(sheets.map(sheet => sheet?.key)).toEqual(slugs.map(slug => `${slug}@1`))
+    expect(loads).toHaveLength(6)
+    expect(disposed).toEqual([])
+    expect(slugs.every(slug => cache.peek(`${slug}@1`) !== null)).toBe(true)
   })
 
-  it('counts sheets still loading toward the cap', async () => {
-    const { cache, loads, held, finish } = harness(1)
+  it('keeps up to its cap of sheets nobody holds, letting go of the one released longest ago first and never of a held one', async () => {
+    const { cache, loads, disposed } = harness({ cap: 2 })
+    await take(cache, 'a', 'b', 'c', 'd', 'e')
+    cache.release('b@1')
+    cache.release('a@1')
+    expect(disposed).toEqual([])
+
+    cache.release('d@1')
+    expect(disposed).toEqual(['b@1'])
+    cache.release('c@1')
+    expect(disposed).toEqual(['b@1', 'a@1'])
+
+    expect(await cache.acquire(ref('d'))).toMatchObject({ key: 'd@1' })
+    cache.release('e@1')
+    expect(disposed).toEqual(['b@1', 'a@1'])
+    cache.release('d@1')
+    expect(disposed).toEqual(['b@1', 'a@1', 'c@1'])
+    expect(cache.peek('e@1')).not.toBeNull()
+    expect(cache.peek('d@1')).not.toBeNull()
+    expect(loads).toEqual(['a@1', 'b@1', 'c@1', 'd@1', 'e@1'])
+  })
+
+  it('counts a sheet that finished loading after its holders let go among the ones nobody holds', async () => {
+    const { cache, disposed, held, finish } = harness({ cap: 1 })
+    await take(cache, 'a')
+    cache.release('a@1')
+    held.add('b@1')
+    const pending = cache.acquire(ref('b'))
+    cache.release('b@1')
+    await finish('b@1')
+
+    expect(await pending).toMatchObject({ key: 'b@1' })
+    expect(disposed).toEqual(['a@1'])
+  })
+
+  it('refuses a new sheet past its ceiling without loading it, after making room from the sheets nobody holds', async () => {
+    const { cache, loads, disposed } = harness({ cap: 2, max: 3 })
+    await take(cache, 'a', 'b')
+    cache.release('a@1')
+    await take(cache, 'c', 'd')
+
+    expect(disposed).toEqual(['a@1'])
+    expect(await cache.acquire(ref('e'))).toBeNull()
+    expect(cache.failed('e@1')).toBe(false)
+    expect(loads).toEqual(['a@1', 'b@1', 'c@1', 'd@1'])
+  })
+
+  it('counts sheets still loading toward its ceiling', async () => {
+    const { cache, loads, held, finish } = harness({ cap: 1, max: 1 })
     held.add('a@1')
     const pending = cache.acquire(ref('a'))
 
@@ -136,23 +190,21 @@ describe('the sprite cache', () => {
     expect(await pending).toMatchObject({ key: 'a@1' })
   })
 
-  it('makes room by evicting the sheet let go longest ago, and never one that is held', async () => {
-    const { cache, disposed } = harness(3)
-    await take(cache, 'a', 'b', 'c')
-    cache.release('b@1')
+  it('lets a view refused at the ceiling load once another view lets a sheet go', async () => {
+    const { cache, disposed } = harness({ cap: 1, max: 2 })
+    await take(cache, 'a', 'b')
+    expect(await cache.acquire(ref('c'))).toBeNull()
+
+    const retried = new Promise<CachedSheet | null>(resolve => {
+      const off = cache.onRelease(() => {
+        off()
+        resolve(cache.acquire(ref('c')))
+      })
+    })
     cache.release('a@1')
-    cache.release('c@1')
 
-    await take(cache, 'd')
-    expect(disposed).toEqual(['b@1'])
-    await take(cache, 'e')
-    expect(disposed).toEqual(['b@1', 'a@1'])
-
-    expect(await cache.acquire(ref('c'))).toMatchObject({ key: 'c@1' })
-    cache.release('d@1')
-    await take(cache, 'f')
-    expect(disposed).toEqual(['b@1', 'a@1', 'd@1'])
-    expect(cache.peek('c@1')).not.toBeNull()
+    expect(await retried).toMatchObject({ key: 'c@1' })
+    expect(disposed).toEqual(['a@1'])
   })
 
   it('replaces an old revision of a pet as soon as nobody holds it', async () => {
@@ -176,7 +228,7 @@ describe('the sprite cache', () => {
   })
 
   it('ignores a release of a key it does not hold, and never counts below none', async () => {
-    const { cache, disposed } = harness(1)
+    const { cache, disposed } = harness({ cap: 1, max: 1 })
     cache.release('ghost@1')
 
     await take(cache, 'a')
@@ -188,19 +240,42 @@ describe('the sprite cache', () => {
     expect(disposed).toEqual([])
   })
 
-  it('gives null for a sheet it cannot read, keeps nothing of it, and reads it again next time', async () => {
-    const { cache, loads, disposed, broken, throws } = harness()
+  it('gives null for a sheet it cannot read, says so, and keeps no room for it', async () => {
+    const { cache, loads, disposed, broken, throws } = harness({ cap: 1, max: 1 })
     broken.add('torn@1')
     throws.add('bad@1')
 
     expect(await cache.acquire(ref('torn'))).toBeNull()
     expect(await cache.acquire(ref('bad'))).toBeNull()
+    expect(cache.failed('torn@1')).toBe(true)
+    expect(cache.failed('bad@1')).toBe(true)
     expect(cache.peek('torn@1')).toBeNull()
 
-    broken.clear()
-    expect(await cache.acquire(ref('torn'))).toMatchObject({ key: 'torn@1' })
-    expect(loads).toEqual(['torn@1', 'bad@1', 'torn@1'])
+    expect(await cache.acquire(ref('a'))).toMatchObject({ key: 'a@1' })
+    expect(loads).toEqual(['torn@1', 'bad@1', 'a@1'])
     expect(disposed).toEqual([])
+  })
+
+  it('reads a failed sheet again only after a short wait, or at once for a new revision', async () => {
+    const { cache, loads, broken, advance } = harness()
+    broken.add('torn@1')
+    expect(await cache.acquire(ref('torn'))).toBeNull()
+
+    broken.clear()
+    advance(SPRITE_RETRY_MS - 1)
+    expect(await cache.acquire(ref('torn'))).toBeNull()
+    expect(cache.failed('torn@1')).toBe(true)
+    expect(loads).toEqual(['torn@1'])
+
+    advance(1)
+    expect(await cache.acquire(ref('torn'))).toMatchObject({ key: 'torn@1' })
+    expect(cache.failed('torn@1')).toBe(false)
+    expect(loads).toEqual(['torn@1', 'torn@1'])
+
+    broken.add('rip@1')
+    expect(await cache.acquire(ref('rip'))).toBeNull()
+    expect(await cache.acquire(ref('rip', '2'))).toMatchObject({ key: 'rip@2' })
+    expect(loads).toEqual(['torn@1', 'torn@1', 'rip@1', 'rip@2'])
   })
 
   it('drops a sheet that finished loading for nobody once a newer revision was asked for', async () => {
@@ -239,25 +314,12 @@ describe('the sprite cache', () => {
     expect(listener).toHaveBeenCalledTimes(1)
   })
 
-  it('lets a view that got null in a full cache try again once a sheet is let go', async () => {
-    const { cache } = harness(1)
-    await take(cache, 'a')
-    expect(await cache.acquire(ref('b'))).toBeNull()
-
-    const retried = new Promise<CachedSheet | null>(resolve => {
-      const off = cache.onRelease(() => {
-        off()
-        resolve(cache.acquire(ref('b')))
-      })
-    })
-    cache.release('a@1')
-
-    expect(await retried).toMatchObject({ key: 'b@1' })
-  })
-
-  it('keeps at least one sheet whatever cap it is given', () => {
-    expect(harness(0).cache.cap).toBe(1)
-    expect(harness(Number.NaN).cache.cap).toBe(1)
-    expect(harness(2.7).cache.cap).toBe(2)
+  it('keeps at least one sheet whatever cap it is given, and a ceiling no lower than its cap', () => {
+    expect(harness({ cap: 0 }).cache.cap).toBe(1)
+    expect(harness({ cap: Number.NaN }).cache.cap).toBe(1)
+    expect(harness({ cap: 2.7 }).cache.cap).toBe(2)
+    expect(harness({ cap: 3, max: 2 }).cache.max).toBe(3)
+    expect(harness({ cap: 2, max: Number.NaN }).cache.max).toBe(2)
+    expect(createSpriteCache({ cap: 2, load: async () => null, release: () => undefined }).max).toBe(2)
   })
 })

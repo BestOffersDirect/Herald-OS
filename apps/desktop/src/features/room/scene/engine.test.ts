@@ -5,11 +5,11 @@ import { layoutFromBlanks } from '../../pet/sprite.ts'
 import type { CachedSheet } from '../../petdex/cache.ts'
 import type { RoomAgent, RoomHandoff } from '../model/types.ts'
 import { BUBBLE_MS } from './choreography.ts'
-import { createRoomEngine, type PetFrame, type PetMarks, type SceneInput, SETTLE_MS } from './engine.ts'
+import { createRoomEngine, type PetFrame, type PetMarks, paintKey, type SceneInput, SETTLE_MS } from './engine.ts'
 import { layoutRoom, slotPoint } from './layout.ts'
 import { FADE_MS } from './motion.ts'
 import { MOVING_TICK_MS } from './poses.ts'
-import type { SheetHolder } from './sheets.ts'
+import type { SheetHolder, SheetState } from './sheets.ts'
 
 // The shared cache's module reads the preload bridge when it loads; tests run without a DOM.
 vi.hoisted(() => {
@@ -93,11 +93,18 @@ function fakeClock() {
   }
 }
 
-function setup({ motion = 'full', loaded = true, running = true }: { motion?: RoomMotion; loaded?: boolean; running?: boolean } = {}) {
+/** `sheet` says how every held sheet is doing, and can change as a test goes. */
+function setup({ motion = 'full', loaded = true, failed = false, running = true }: { motion?: RoomMotion; loaded?: boolean; failed?: boolean; running?: boolean } = {}) {
   const time = fakeClock()
   const frames: PetFrame[][] = []
   const marks: { marks: Readonly<Record<string, PetMarks>>; gone: ReadonlySet<string> }[] = []
-  const sheets: SheetHolder = { hold: vi.fn(), get: vi.fn((slug: string) => (loaded ? sheetFor(slug) : null)), dispose: vi.fn() }
+  const sheet = { loaded, failed }
+  const sheets: SheetHolder = {
+    hold: vi.fn(),
+    get: vi.fn((slug: string) => (sheet.loaded ? sheetFor(slug) : null)),
+    state: vi.fn((): SheetState => (sheet.loaded ? 'ready' : sheet.failed ? 'failed' : 'loading')),
+    dispose: vi.fn()
+  }
   const engine = createRoomEngine({ clock: time.clock, key: KEY, sheets, paint: drawn => frames.push([...drawn]), marks: (next, gone) => marks.push({ marks: next, gone }), now: time.now })
   const layout = layoutRoom(1100, 620)
   engine.setLayout(layout)
@@ -121,7 +128,7 @@ function setup({ motion = 'full', loaded = true, running = true }: { motion?: Ro
       ...patch
     })
 
-  return { time, engine, layout, frames, marks, sheets, last, pet, mark, feed }
+  return { time, engine, layout, frames, marks, sheet, sheets, last, pet, mark, feed }
 }
 
 describe('the room engine', () => {
@@ -396,6 +403,92 @@ describe('the room engine', () => {
 
     expect(scene.pet('a')?.cell).toBeNull()
     expect(scene.sheets.hold).toHaveBeenCalledWith([{ slug: 'boba', revision: '1', mime: 'image/png' }])
+  })
+
+  it('draws a still figure for a pet whose sheet failed, never while it loads, and the sprite once it is in', () => {
+    const scene = setup({ loaded: false })
+    scene.feed([agent('a')])
+    scene.time.advance(SETTLE_MS)
+
+    expect(scene.pet('a')).toMatchObject({ sheet: null, cell: null, fallback: false })
+
+    const painted = scene.frames.length
+    scene.sheet.failed = true
+    scene.feed([agent('a')])
+    scene.time.advance(1)
+
+    expect(scene.frames).toHaveLength(painted + 1)
+    expect(scene.pet('a')).toMatchObject({ sheet: null, cell: null, fallback: true })
+    expect(scene.time.pending()).toBeNull()
+
+    scene.sheet.loaded = true
+    scene.engine.wake()
+    scene.time.advance(1)
+
+    expect(scene.pet('a')?.fallback).toBe(false)
+    expect(scene.pet('a')?.cell).not.toBeNull()
+  })
+
+  it('draws the figure for an installed pet main found no sheet for, and none when no pet is installed', () => {
+    const scene = setup({ loaded: false })
+    scene.feed([agent('a')], { installed: [{ slug: 'boba', displayName: 'Boba', revision: null, mime: null }] })
+    scene.time.advance(SETTLE_MS)
+
+    expect(scene.pet('a')?.fallback).toBe(true)
+    expect(scene.sheets.hold).not.toHaveBeenCalled()
+
+    const bare = setup({ loaded: false, failed: true })
+    bare.feed([agent('a')], { installed: [], assignment: {} })
+    bare.time.advance(SETTLE_MS)
+
+    expect(bare.pet('a')).toMatchObject({ sheet: null, fallback: false })
+
+    const removed = setup({ loaded: false, failed: true })
+    removed.feed([agent('a')])
+    removed.time.advance(SETTLE_MS)
+    removed.feed([agent('a')], { installed: [], assignment: {} })
+    removed.time.advance(1)
+
+    expect(removed.pet('a')?.fallback).toBe(false)
+  })
+
+  it('counts the figure in what a paint shows', () => {
+    const layout = layoutRoom(1100, 620)
+    const shown: PetFrame = { id: 'a', agent: agent('a'), x: 10, y: 20, opacity: 1, pose: 'idle', cell: null, sheet: null, fallback: false, tint: null, leaving: false }
+
+    expect(paintKey([shown], layout)).not.toBe(paintKey([{ ...shown, fallback: true }], layout))
+  })
+
+  it('fades an outside agent in where it first stands, never at the door', () => {
+    const scene = setup()
+    scene.feed([agent('a')])
+    scene.time.advance(SETTLE_MS)
+    scene.feed([agent('a'), agent('o', { kind: 'elsewhere', phase: 'tool', area: 'terminal', startedAt: 2 })])
+    scene.time.advance(1)
+
+    expect(scene.pet('o')).toMatchObject(slotPoint(scene.layout, 'terminal', 0))
+    expect(scene.pet('o')!.opacity).toBeLessThan(1)
+
+    scene.time.advance(FADE_MS + 50)
+
+    expect(scene.pet('o')).toMatchObject({ ...slotPoint(scene.layout, 'terminal', 0), opacity: 1 })
+    expect(scene.last().some(frame => frame.pose.startsWith('walk'))).toBe(false)
+  })
+
+  it('fades a leaving outside agent out where it stands instead of walking it through the door', () => {
+    const scene = setup()
+    scene.feed([agent('a'), agent('o', { kind: 'elsewhere', phase: 'tool', area: 'terminal' })])
+    scene.time.advance(SETTLE_MS)
+    scene.feed([agent('a')])
+    scene.time.advance(100)
+
+    expect(scene.pet('o')).toMatchObject({ ...slotPoint(scene.layout, 'terminal', 0), leaving: true })
+    expect(scene.pet('o')!.opacity).toBeLessThan(1)
+    expect(scene.pet('o')?.pose).not.toMatch(/^walk-/)
+
+    scene.time.advance(FADE_MS + 50)
+
+    expect(scene.pet('o')).toBeUndefined()
   })
 
   it('puts every pet at its new spot when the room is resized', () => {

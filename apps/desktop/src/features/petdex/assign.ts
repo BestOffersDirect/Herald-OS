@@ -8,6 +8,9 @@ export interface PetAssignment {
   tint: number | null
 }
 
+/** The most distinct sheets the Room draws at once: one for each kind of work. */
+export const ROOM_SHEET_CAP = ROOM_KINDS.length
+
 /**
  * The pet for each kind of work: the person's choice when that pet is installed; the other kinds
  * take the installed pets nobody chose, in kind order and then round again, so kinds differ while

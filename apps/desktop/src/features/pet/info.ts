@@ -58,11 +58,12 @@ function loadShown(ref: PetSheetRef): void {
   stopWaiting = null
 
   void (async () => {
+    const key = sheetKey(ref)
     let cached = await spriteCache.acquire(ref)
 
-    if (!cached && mine === ticket && held) {
-      // Other views hold every other sheet in the cache: let go of the one on show to make room
-      // (its last frame stays on screen until the new one is in).
+    if (!cached && mine === ticket && held && !spriteCache.failed(key)) {
+      // Other views hold as many sheets as the cache decodes at once: let go of the one on show to
+      // make room (its last frame stays on screen until the new one is in).
       spriteCache.release(held)
       held = null
       cached = await spriteCache.acquire(ref)
@@ -78,7 +79,8 @@ function loadShown(ref: PetSheetRef): void {
 
     setSheet(cached)
 
-    if (!cached) {
+    // Only a sheet refused for want of room waits for a release: one that cannot be read waits for its next revision.
+    if (!cached && !spriteCache.failed(key)) {
       stopWaiting = spriteCache.onRelease(() => {
         if (mine === ticket) {
           loadShown(ref)

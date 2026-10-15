@@ -10,7 +10,7 @@ import { bubbleText } from './labels.ts'
 import { assignSlots, deskSpot, depthOrder, type Rect, type RoomSpot, type SceneLayout, type SlotRef, slotPoint } from './layout.ts'
 import { type Body, bodyMoving, FADE_MS, fadeOut, spawnBody, stepBody } from './motion.ts'
 import { type Cell, cellAt, nextWake, poseOf } from './poses.ts'
-import { type SheetHolder, sheetRefs } from './sheets.ts'
+import { type SheetHolder, sheetRefOf, sheetRefs } from './sheets.ts'
 
 /*
  * The scene's moving parts on one clock key: where each pet stands, walks and what it carries, the
@@ -40,6 +40,8 @@ export interface PetFrame {
   pose: PetPose
   cell: Cell | null
   sheet: CachedSheet | null
+  /** Its installed pet has no sheet to be had (missing, unreadable, or no room in the cache): drawn as a plain figure. Never while the sheet is loading. */
+  fallback: boolean
   tint: number | null
   /** On its way out: drawn, but no longer an agent in the room. */
   leaving: boolean
@@ -109,7 +111,7 @@ const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean => a.s
 
 /** What a paint shows, in the whole pixels the overlays are placed at: a tick that would draw the same again draws nothing. */
 export function paintKey(frames: readonly PetFrame[], at: Pick<SceneLayout, 'width' | 'height'>): string {
-  const cells = frames.map(frame => [frame.id, Math.round(frame.x), Math.round(frame.y), frame.opacity.toFixed(3), frame.cell ? `${frame.cell.row}.${frame.cell.frame}.${frame.cell.mirror ? 1 : 0}` : '-', frame.tint ?? '-', frame.sheet?.key ?? '-', frame.leaving ? 1 : 0].join(':'))
+  const cells = frames.map(frame => [frame.id, Math.round(frame.x), Math.round(frame.y), frame.opacity.toFixed(3), frame.cell ? `${frame.cell.row}.${frame.cell.frame}.${frame.cell.mirror ? 1 : 0}` : '-', frame.tint ?? '-', frame.sheet?.key ?? '-', frame.fallback ? 1 : 0, frame.leaving ? 1 : 0].join(':'))
 
   return `${at.width}x${at.height}|${cells.join('|')}`
 }
@@ -133,6 +135,8 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
   let shownMarks: Record<string, PetMarks> = {}
   let shownGone: ReadonlySet<string> = new Set()
   let heldSheets = ''
+  /** Each installed pet: whether main found a sheet for it. */
+  let hasSheet = new Map<string, boolean>()
   const pets = new Map<string, Pet>()
   const leavers = new Map<string, Pet>()
   const handled = new Set<string>()
@@ -234,8 +238,8 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
       }
 
       const comesIn = baseline && !first
-      // Work outside Herald appears in its lane: it never comes through the room's door.
-      const atDoor = comesIn && motion === 'full' && now >= settleUntil && agent.area !== 'elsewhere'
+      // Work outside Herald never comes through the room's door: it fades in where it first stands.
+      const atDoor = comesIn && motion === 'full' && now >= settleUntil && agent.kind !== 'elsewhere'
       const body = spawnBody(atDoor ? layout!.doorway : targetOf(agent.id, agent), now, motion, comesIn)
       pets.set(agent.id, { agent, body, look, pose: poseOf(agent, 0), since: now, arrivedAt: atDoor ? now : null })
     }
@@ -297,6 +301,13 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
     return null
   }
 
+  /** An installed pet whose sheet cannot be had: main found none, or the holder could not get it. A pet that is not installed (none at all, or one just removed) gets no figure. */
+  const unavailable = (slug: string): boolean => {
+    const found = hasSheet.get(slug)
+
+    return found === false || (found === true && hooks.sheets.state(slug) === 'failed')
+  }
+
   const frameOf = (id: string, pet: Pet, now: number, leaving: boolean): PetFrame => {
     const sheet = pet.look ? hooks.sheets.get(pet.look.slug) : null
 
@@ -309,6 +320,7 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
       pose: pet.pose,
       cell: sheet ? cellAt(pet.pose, sheet.sheet.layout, pet.since, now, motion === 'still', Math.min(now, pet.agent.lastEventAt)) : null,
       sheet,
+      fallback: !sheet && pet.look !== null && unavailable(pet.look.slug),
       tint: pet.look?.tint ?? null,
       leaving
     }
@@ -386,7 +398,7 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
     for (const [id, pet] of leavers) {
       const doorway = layout.doorway
       const atDoor = Math.hypot(pet.body.x - doorway.x, pet.body.y - doorway.y) < 1
-      const walksOut = motion === 'full' && !atDoor && pet.agent.area !== 'elsewhere'
+      const walksOut = motion === 'full' && !atDoor && pet.agent.kind !== 'elsewhere'
       let body = walksOut ? stepBody(pet.body, doorway, dt, now, motion) : stepBody(pet.body, { x: pet.body.x, y: pet.body.y }, dt, now, motion)
 
       if (!body.walking && !body.fade && body.opacity > 0) {
@@ -470,6 +482,10 @@ export function createRoomEngine(hooks: SceneHooks): RoomEngine {
 
       if (changed) {
         dropPlans(() => true, (hooks.now ?? Date.now)())
+      }
+
+      if (next.installed !== input?.installed) {
+        hasSheet = new Map(next.installed.map(pet => [pet.slug, sheetRefOf(pet) !== null]))
       }
 
       input = next

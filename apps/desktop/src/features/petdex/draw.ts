@@ -21,11 +21,20 @@ export const PET_TINTS: readonly { hue: number; label: string }[] = [
 /** A turned hue reads paler than the pet's own: a little more saturation keeps the tints apart. */
 const TINT_SATURATION = 1.2
 
+const tintHue = (tint: number | null): number | undefined => (tint !== null && Number.isInteger(tint) && tint > 0 ? PET_TINTS[tint]?.hue : undefined)
+
 /** The canvas filter for a PET_TINTS index; null for the pet's own colours or an index there is no tint for. */
 export function tintFilter(tint: number | null): string | null {
-  const hue = tint !== null && Number.isInteger(tint) && tint > 0 ? PET_TINTS[tint]?.hue : undefined
+  const hue = tintHue(tint)
 
   return hue === undefined ? null : `hue-rotate(${hue}deg) saturate(${TINT_SATURATION})`
+}
+
+/** A soft colour of a PET_TINTS index's hue, for a pet drawn without its sheet; null for its own colours or an index there is no tint for. */
+export function tintColour(tint: number | null): string | null {
+  const hue = tintHue(tint)
+
+  return hue === undefined ? null : `hsl(${hue} 42% 64%)`
 }
 
 export interface SpriteCell {

@@ -14,12 +14,14 @@ const ref = (slug: string, revision = '1'): PetSheetRef => ({ slug, revision, mi
 
 const cached = (key: string): CachedSheet => ({ key, slug: key.split('@')[0], sheet: { url: '', width: 1, height: 1, layout: { columns: 1, rows: 1, rowNames: ['idle'], frames: [1] } }, image: {} as CanvasImageSource })
 
-/** A cache whose loads finish when the test says so, counting holds per key. */
+/** A cache whose loads finish when the test says so, counting holds per key; keys in `unreadable` fail to read. */
 function fakeCache() {
   const loads = new Map<string, (sheet: CachedSheet | null) => void>()
   const holds = new Map<string, number>()
   const listeners = new Set<() => void>()
+  const unreadable = new Set<string>()
   const cache = {
+    failed: (key: string) => unreadable.has(key),
     onRelease: (listener: () => void) => {
       listeners.add(listener)
 
@@ -49,7 +51,7 @@ function fakeCache() {
   }
   const announce = () => listeners.forEach(listener => listener())
 
-  return { cache, holds, finish, announce, listeners }
+  return { cache, holds, finish, announce, listeners, unreadable }
 }
 
 describe('sheetRefOf', () => {
@@ -167,24 +169,99 @@ describe('holdSheets', () => {
     expect(holder.get('a')).toBeNull()
   })
 
-  it('asks again for a sheet the full cache had no room for once another view lets one go', async () => {
+  it('says how each held sheet is doing: loading, ready or failed', async () => {
+    const { cache, finish, unreadable } = fakeCache()
+    const holder = holdSheets(cache, () => undefined)
+    holder.hold([ref('a'), ref('b')])
+
+    expect(holder.state('a')).toBe('loading')
+
+    await finish('a@1')
+    unreadable.add('b@1')
+    await finish('b@1', null)
+
+    expect(holder.state('a')).toBe('ready')
+    expect(holder.state('b')).toBe('failed')
+    expect(holder.state('ghost')).toBeNull()
+
+    holder.hold([ref('a')])
+
+    expect(holder.state('b')).toBeNull()
+  })
+
+  it('asks again for a sheet the full cache had no room for once another view lets one go, failed meanwhile', async () => {
     const { cache, finish, announce } = fakeCache()
-    const onLoad = vi.fn()
-    const holder = holdSheets(cache, onLoad)
+    const onChange = vi.fn()
+    const holder = holdSheets(cache, onChange)
     holder.hold([ref('a')])
     await finish('a@1', null)
+
+    expect(holder.state('a')).toBe('failed')
+    expect(onChange).toHaveBeenCalledTimes(1)
+
     announce()
 
     expect(cache.acquire).toHaveBeenCalledTimes(2)
+    expect(holder.state('a')).toBe('failed')
 
+    await finish('a@1', null)
+
+    expect(onChange).toHaveBeenCalledTimes(1)
+
+    announce()
     await finish('a@1')
 
     expect(holder.get('a')).not.toBeNull()
-    expect(onLoad).toHaveBeenCalledTimes(1)
+    expect(holder.state('a')).toBe('ready')
+    expect(onChange).toHaveBeenCalledTimes(2)
 
     announce()
 
+    expect(cache.acquire).toHaveBeenCalledTimes(3)
+  })
+
+  it('never asks again on a release for a sheet that cannot be read, only once it is held anew', async () => {
+    const { cache, finish, announce, unreadable } = fakeCache()
+    const onChange = vi.fn()
+    const holder = holdSheets(cache, onChange)
+    unreadable.add('a@1')
+    holder.hold([ref('a')])
+    await finish('a@1', null)
+    announce()
+    announce()
+
+    expect(cache.acquire).toHaveBeenCalledTimes(1)
+    expect(holder.state('a')).toBe('failed')
+    expect(onChange).toHaveBeenCalledTimes(1)
+
+    holder.hold([ref('a')])
+
+    expect(cache.acquire).toHaveBeenCalledTimes(1)
+
+    holder.hold([])
+    holder.hold([ref('a')])
+
     expect(cache.acquire).toHaveBeenCalledTimes(2)
+    expect(holder.state('a')).toBe('loading')
+
+    holder.hold([ref('a', '2')])
+    unreadable.clear()
+    await finish('a@2')
+
+    expect(holder.get('a')?.key).toBe('a@2')
+  })
+
+  it('treats a load that throws as a sheet that cannot be read', async () => {
+    const { cache, announce } = fakeCache()
+    cache.acquire.mockRejectedValueOnce(new Error('unreadable'))
+    const holder = holdSheets(cache, () => undefined)
+    holder.hold([ref('a')])
+    await Promise.resolve()
+    await Promise.resolve()
+    announce()
+
+    expect(holder.state('a')).toBe('failed')
+    expect(cache.acquire).toHaveBeenCalledTimes(1)
   })
 
   it('stops listening for room once disposed', () => {
