@@ -349,7 +349,7 @@ class NoteEvaluator {
       kind: 'value',
       source,
       label: shape.label?.text ?? name ?? outcome.label?.text,
-      name,
+      name: named ?? undefined,
       value: outcome.calc,
       display: outcome.display,
       steps: outcome.steps,

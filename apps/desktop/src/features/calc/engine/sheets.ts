@@ -14,7 +14,7 @@ export interface SheetRow {
   value: number | string | null
   /** Column B: the line's label, the name it assigns, a comment's or heading's text. */
   label: string
-  /** A number format for column A when the value needs one: "#,##0.00", "0.00%", "[$USD] #,##0.00", "yyyy-mm-dd". */
+  /** A number format for column A when the value needs one: "#,##0.00", "0.00%", "[$$]#,##0.00", "yyyy-mm-dd". */
   format?: string
   /** A heading: the row is bold. */
   heading?: boolean
@@ -25,6 +25,17 @@ export function toSheetRows(document: DocumentResult): SheetRow[] {
   const builder = new SheetBuilder(document)
 
   return document.lines.map(line => builder.row(line))
+}
+
+/** The sign a currency is written with in the locale ("$", "US$", "R$", "€"), so a column of money stays narrow. */
+function currencySymbol(code: string, locale: string | undefined): string {
+  try {
+    const sign = new Intl.NumberFormat(locale ?? 'en-US', { style: 'currency', currency: code, currencyDisplay: 'symbol' }).formatToParts(1).find(part => part.type === 'currency')?.value
+
+    return sign && !/[\]"]/.test(sign) ? sign : code
+  } catch {
+    return code
+  }
 }
 
 /** A cell's formula text, how tightly it binds (1 sum … 5 atom), and whether it is a percentage. */
@@ -131,7 +142,7 @@ class SheetBuilder {
         const code = value.unit ?? 'USD'
         const minor = currencyMinor(code, this.document.locale)
 
-        result = { value: formula ?? value.number, label, format: `[$${code}] #,##0${minor ? `.${'0'.repeat(minor)}` : ''}` }
+        result = { value: formula ?? value.number, label, format: `[$${currencySymbol(code, this.document.locale)}]#,##0${minor ? `.${'0'.repeat(minor)}` : ''}` }
         break
       }
       case 'number':
@@ -225,7 +236,7 @@ class SheetBuilder {
     const fits = lines.every(line => {
       const kind = line.value?.kind
 
-      return value.kind === 'currency' ? kind === 'currency' && line.value?.unit === value.unit : kind === 'number' && !line.usesRates
+      return (value.kind === 'currency' && kind === 'currency' && line.value?.unit === value.unit) || (kind === 'number' && !line.usesRates)
     })
 
     return fits ? `=${kind === 'sum' ? 'SUM' : 'AVERAGE'}(A${this.blockStart}:A${row - 1})` : null

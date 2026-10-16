@@ -3,7 +3,7 @@ import type { DocumentResult } from '../engine/types.ts'
 /*
  * A note as a document for Copy to Docs: the note's name as its title, each part of the note under
  * a heading as a two-column table of what was worked out and its answer, short comments as quiet
- * lines beside it, and the note's total in bold last.
+ * lines where they stand, and the note's total in bold last.
  */
 
 export interface DocsTable {
@@ -19,11 +19,8 @@ const HEADER = ['| Calculation | Result |', '| --- | ---: |']
 
 interface Section {
   heading: string | null
-  /** Comments before the section's first calculation. */
-  before: string[]
-  rows: [calculation: string, result: string][]
-  /** Comments after it. */
-  after: string[]
+  /** In the note's order: comments as text, calculations as their two cells. */
+  parts: Array<string | [calculation: string, result: string]>
 }
 
 const squash = (text: string): string => text.replace(/\s+/g, ' ').trim()
@@ -46,7 +43,7 @@ function titleFor(line: string, title: string): string | null {
 /** The note as Markdown for Herald Docs, and how many of its lines it shows. */
 export function docsTable(document: DocumentResult, title: string): DocsTable {
   let name = squash(title) || 'Calculations'
-  const sections: Section[] = [{ heading: null, before: [], rows: [], after: [] }]
+  const sections: Section[] = [{ heading: null, parts: [] }]
   let lines = 0
   let first = true
 
@@ -66,44 +63,62 @@ export function docsTable(document: DocumentResult, title: string): DocsTable {
       if (named) {
         name = named.length <= SHORT_COMMENT ? named : name
       } else if (text && line.kind === 'heading') {
-        sections.push({ heading: text, before: [], rows: [], after: [] })
+        sections.push({ heading: text, parts: [] })
         lines++
       } else if (text && text.length <= SHORT_COMMENT) {
-        const comments = section.rows.length ? section.after : section.before
-        comments.push(text)
+        section.parts.push(text)
         lines++
       }
     } else if (line.kind === 'value' || line.kind === 'error') {
       const calculation = squash(line.source)
 
       if (calculation) {
-        section.rows.push([calculation, line.kind === 'value' ? squash(line.display ?? line.value?.exact ?? '') || '—' : '—'])
+        section.parts.push([calculation, line.kind === 'value' ? squash(line.display ?? line.value?.exact ?? '') || '—' : '—'])
         lines++
       }
     }
   }
 
-  const total = squash(document.totalDisplay ?? '')
-  const tables = sections.filter(section => section.rows.length).length
+  // A comment between calculations splits their table, so everything reads in the note's order.
   const blocks = [`# ${plain(name)}`]
+  const tables: string[][][] = []
+  const placed: Array<string | string[][]> = []
 
   for (const section of sections) {
     if (section.heading) {
-      blocks.push(`## ${plain(section.heading)}`)
+      placed.push(`## ${plain(section.heading)}`)
     }
 
-    blocks.push(...section.before.map(text => `_${plain(text)}_`))
+    let rows: string[][] | null = null
 
-    if (section.rows.length) {
-      const rows = section.rows.map(([calculation, result]) => row([plain(calculation), plain(result)]))
-      blocks.push([...HEADER, ...rows, ...(total && tables === 1 ? [totalRow(total)] : [])].join('\n'))
+    for (const part of section.parts) {
+      if (typeof part === 'string') {
+        rows = null
+        placed.push(`_${plain(part)}_`)
+      } else {
+        if (!rows) {
+          rows = []
+          tables.push(rows)
+          placed.push(rows)
+        }
+
+        rows.push([plain(part[0]), plain(part[1])])
+      }
     }
+  }
 
-    blocks.push(...section.after.map(text => `_${plain(text)}_`))
+  const total = squash(document.totalDisplay ?? '')
+
+  for (const block of placed) {
+    if (typeof block === 'string') {
+      blocks.push(block)
+    } else {
+      blocks.push([...HEADER, ...block.map(row), ...(total && tables.length === 1 ? [totalRow(total)] : [])].join('\n'))
+    }
   }
 
   // With several tables the total is the whole note's, so it stands alone rather than under the last.
-  if (total && tables !== 1) {
+  if (total && tables.length !== 1) {
     blocks.push([totalRow(total), HEADER[1]].join('\n'))
   }
 

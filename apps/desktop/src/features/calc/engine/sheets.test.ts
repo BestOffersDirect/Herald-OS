@@ -39,6 +39,14 @@ describe('toSheetRows', () => {
     expect(sheet[1].label).toBe('budget * 12')
   })
 
+  it('refers to rows a label named, and sums money with plain numbers', async () => {
+    const sheet = await rows('flights = $1,240\nhotel: 4 nights * $189\nfood = 35 * 6\nflights + hotel + food\nsum')
+
+    expect(sheet.map(row => row.value)).toEqual([1240, 756, '=35*6', '=A1+A2+A3', '=SUM(A1:A4)'])
+    expect(sheet[1].label).toBe('hotel')
+    expect(sheet[4].format).toBe('[$$]#,##0.00')
+  })
+
   it('writes percentage forms as Sheets understands them', async () => {
     const sheet = await rows('84.50 + 15%\n20% of 84.50\n15% off 60\n84.50 - 15%\nwhat % of 80 is 20\n20 is 25% of what\n% change from 50 to 75\nincrease 50 by 10%\n15%')
 
@@ -76,9 +84,9 @@ describe('toSheetRows', () => {
   it('formats money and keeps one currency in formulas', async () => {
     const sheet = await rows('$1,200 * 12\nrent = $1,200\nrent * 12\n¥1000 + ¥5')
 
-    expect(sheet[0]).toEqual({ value: '=1200*12', label: '$1,200 * 12', format: '[$USD] #,##0.00' })
-    expect(sheet[2]).toMatchObject({ value: '=A2*12', format: '[$USD] #,##0.00' })
-    expect(sheet[3].format).toBe('[$JPY] #,##0')
+    expect(sheet[0]).toEqual({ value: '=1200*12', label: '$1,200 * 12', format: '[$$]#,##0.00' })
+    expect(sheet[2]).toMatchObject({ value: '=A2*12', format: '[$$]#,##0.00' })
+    expect(sheet[3].format).toBe('[$¥]#,##0')
   })
 
   it('puts the value where a line does not map: conversions, units and rates', async () => {
@@ -86,7 +94,7 @@ describe('toSheetRows', () => {
 
     expect(sheet[0].value).toBeCloseTo(3.1068559612, 9)
     expect(sheet[0].label).toBe('5 km in mi (mi)')
-    expect(sheet[1]).toEqual({ value: 500, label: '100 USD in BRL', format: '[$BRL] #,##0.00' })
+    expect(sheet[1]).toEqual({ value: 500, label: '100 USD in BRL', format: '[$R$]#,##0.00' })
     expect(sheet[2]).toEqual({ value: 200, label: '3 hours 20 minutes in minutes (minutes)' })
   })
 

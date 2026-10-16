@@ -76,15 +76,16 @@ describe('a note as a Docs table', () => {
     expect(markdown).toContain('| y = 4 | — |')
   })
 
-  it('keeps short comments as quiet lines before and after the table, and long ones out', () => {
+  it('keeps short comments as quiet lines where they stand, and long ones out', () => {
     const long = 'n'.repeat(SHORT_COMMENT + 1)
     const markdown = toDocsMarkdown(note([comment('Prices from October'), value('Rent', '1,200'), comment(long), comment('Check the bond'), value('Bond', '4,800')]), 'Flat')
 
     expect(read(markdown)).toEqual([
       { h1: 'Flat' },
       { paragraph: 'Prices from October' },
-      { table: [['th:Calculation', 'th:Result'], ['td:Rent', 'td:1,200'], ['td:Bond', 'td:4,800']] },
-      { paragraph: 'Check the bond' }
+      { table: [['th:Calculation', 'th:Result'], ['td:Rent', 'td:1,200']] },
+      { paragraph: 'Check the bond' },
+      { table: [['th:Calculation', 'th:Result'], ['td:Bond', 'td:4,800']] }
     ])
     expect(markdown).toContain('_Prices from October_')
     expect(docsTable(note([comment('Prices from October'), comment(long)]), 'Flat').lines).toBe(1)
