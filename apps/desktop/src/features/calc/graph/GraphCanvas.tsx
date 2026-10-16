@@ -387,9 +387,12 @@ export function GraphCanvas({ plots, xMin, xMax, compact = false, description, h
 
   useEffect(
     () => () => {
+      // A remount (React's development double mount too) schedules again only from a cleared frame.
       cancelAnimationFrame(frame.current)
+      frame.current = 0
       window.clearTimeout(settleTimer.current)
       window.clearTimeout(rangeTimer.current)
+      rangeTimer.current = 0
     },
     []
   )

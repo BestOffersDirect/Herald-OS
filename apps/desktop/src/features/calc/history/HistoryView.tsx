@@ -66,7 +66,7 @@ function HistoryRow({ entry, time, current, copied, reduced, rowRef, onFocus, on
   const action = cn('flex size-7 items-center justify-center rounded-md text-fg-3 hover:bg-white/8 hover:text-fg', !reduced && 'transition-colors duration-150')
 
   return (
-    <li className="group relative" onFocus={onFocus}>
+    <li className="group/reveal-row flex items-center gap-1" onFocus={onFocus}>
       <button
         ref={rowRef}
         type="button"
@@ -74,7 +74,7 @@ function HistoryRow({ entry, time, current, copied, reduced, rowRef, onFocus, on
         data-os-target={`calc-history:${entry.id}`}
         aria-label={`${entry.input} = ${entry.result}${entry.context ? `, ${entry.context}` : ''}. ${source.label}, ${time}`}
         onClick={onPick}
-        className={cn('flex w-full items-center gap-3 rounded-lg py-2 pr-3 pl-2.5 text-left hover:bg-white/6', !reduced && 'transition-colors duration-150')}
+        className={cn('flex min-w-0 flex-1 items-center gap-3 rounded-lg py-2 pr-3 pl-2.5 text-left hover:bg-white/6', !reduced && 'transition-colors duration-150')}
       >
         <span title={source.label} className="flex size-4 shrink-0 items-center justify-center text-fg-4">
           {source.icon}
@@ -84,11 +84,11 @@ function HistoryRow({ entry, time, current, copied, reduced, rowRef, onFocus, on
           {entry.context && <span className="block truncate text-[11.5px] text-fg-4">{entry.context}</span>}
         </span>
         <span className="max-w-[45%] shrink-0 truncate text-right text-[13px] font-medium text-fg tabular-nums">{entry.result}</span>
-        <time dateTime={new Date(entry.at).toISOString()} className={cn('w-14 shrink-0 text-right text-[11.5px] text-fg-4 tabular-nums group-focus-within:opacity-0 group-hover:opacity-0', !reduced && 'transition-opacity duration-150')}>
+        <time dateTime={new Date(entry.at).toISOString()} className="w-14 shrink-0 text-right text-[11.5px] text-fg-4 tabular-nums">
           {time}
         </time>
       </button>
-      <div className={cn('absolute inset-y-0 right-2 flex items-center gap-0.5 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100', !reduced && 'transition-opacity duration-150')}>
+      <div className={cn('reveal flex shrink-0 items-center gap-0.5 pr-1', !reduced && 'transition-opacity duration-150')}>
         {onUse && (
           <button type="button" tabIndex={tabIndex} aria-label={`Use ${entry.input} in the note`} title="Use in the note" onClick={onUse} className={action}>
             <IconCornerDownLeft size={15} />

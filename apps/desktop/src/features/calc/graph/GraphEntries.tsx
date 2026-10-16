@@ -8,6 +8,8 @@ import type { GraphEntry, GraphSeries } from './types.ts'
 /* What the Graph view draws, as a list beside the canvas (editable in the window's Graph view) and as a small legend over a compact graph. */
 
 const PLACEHOLDER = 'sin(x) * x, or column B of Budget.xlsx'
+/** styles.css gives every input `font: inherit` outside Tailwind's layers, which beats font-mono. */
+const MONO = { fontFamily: 'var(--font-mono)', fontSize: 13 } as const
 
 const newEntry = (): GraphEntry => ({ id: crypto.randomUUID(), text: '' })
 
@@ -123,6 +125,7 @@ export function GraphEntries({ entries, sources, series, onEntriesChange, onRetr
                   spellCheck={false}
                   autoComplete="off"
                   className="glass-input h-8 w-full rounded-lg px-2.5 font-mono text-[13px] text-fg outline-none placeholder:text-fg-4"
+                  style={MONO}
                 />
               ) : (
                 <p className="truncate py-1.5 font-mono text-[13px] text-fg" title={entry.text}>

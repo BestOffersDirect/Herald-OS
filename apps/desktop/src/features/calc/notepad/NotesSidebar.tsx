@@ -50,7 +50,7 @@ export function NotesSidebar({ notes, activeId, overlay, reduced, onSelect, onNe
               const active = note.id === activeId
 
               return (
-                <li key={note.id} className="group relative">
+                <li key={note.id} className="group/reveal-row relative">
                   <button
                     type="button"
                     data-os-target={`calc-note:${note.id}`}
@@ -69,7 +69,7 @@ export function NotesSidebar({ notes, activeId, overlay, reduced, onSelect, onNe
                     aria-label={`Delete ${note.title}`}
                     title="Delete"
                     onClick={() => onDelete(note.id)}
-                    className={cn('absolute top-1/2 right-1.5 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-fg-4 transition-[opacity,color,background-color] duration-150 group-hover:opacity-100 hover:bg-white/8 hover:text-fg-2 focus-visible:opacity-100', active ? 'opacity-100' : 'opacity-0')}
+                    className={cn('absolute top-1/2 right-1.5 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-fg-4 transition-[opacity,color,background-color] duration-150 hover:bg-white/8 hover:text-fg-2', !active && 'reveal')}
                   >
                     <IconTrash size={14} />
                   </button>
