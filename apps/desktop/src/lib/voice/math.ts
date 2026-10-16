@@ -1,5 +1,5 @@
 import { CURRENCY_WORDS, MATH_WORDS, UNIT_WORDS } from '../../features/calc/engine/vocabulary.ts'
-import { zoneNames } from '../../features/calc/engine/zones.ts'
+import { knownZoneNames } from '../../features/calc/engine/zones-names.ts'
 
 /*
  * Simple spoken math for the voice fast path: "whats 15% of 340", "how many miles is 10 km" and
@@ -232,8 +232,17 @@ function unitIndex(): PhraseIndex {
   return units.index
 }
 
+/** Every place and zone abbreviation Herald Calc knows; none where the platform lists no zones. */
+function placeNames(): readonly string[] {
+  try {
+    return knownZoneNames()
+  } catch {
+    return []
+  }
+}
+
 function zoneIndex(): PhraseIndex {
-  const names = zoneNames()
+  const names = placeNames()
 
   if (!zones || (zones.names !== names && zones.names.length !== names.length)) {
     zones = { names, index: indexPhrases(names) }
