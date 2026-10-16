@@ -61,6 +61,21 @@ export const en = {
   'space.ideas': 'Ideas',
   'space.numbered': 'Space {index}',
 
+  'sidebar.tagline': 'A more capable you. Always.',
+  'sidebar.pages': 'Pages',
+  'sidebar.spaces': 'Spaces',
+  // {name} is the Space's name, such as “Work”.
+  'sidebar.spaceNamed': '{name} space',
+  'sidebar.addSpace': 'Add space',
+  'sidebar.newSpace': 'New space',
+  'sidebar.expand': 'Expand sidebar',
+  'sidebar.collapse': 'Collapse sidebar',
+  'sidebar.collapseShort': 'Collapse',
+  // {shortcut} is the keyboard shortcut, such as “⌘\”.
+  'sidebar.expandHint': 'Expand sidebar ({shortcut})',
+  'sidebar.collapseHint': 'Collapse sidebar ({shortcut})',
+  'sidebar.resize': 'Resize sidebar',
+
   'switch.doNotDisturb': 'Do not disturb',
   'switch.stayAwake': 'Stay awake',
   'switch.nightLight': 'Night light',
@@ -380,6 +395,21 @@ export const en = {
   'settings.general.sleepHint': 'Minutes without input.',
   'settings.general.neverSleep': 'Never: the computer only sleeps when you ask.',
   'settings.general.sleepMinutes': 'Minutes before sleeping',
+
+  'settings.agents.autonomy': 'Autonomy',
+  'settings.agents.autonomyHint': 'Ask first. Balanced. Independent. How much Hermes checks in before acting.',
+  'settings.agents.askFirst': 'Ask first',
+  'settings.agents.askFirstHint': 'Confirm each action',
+  'settings.agents.balanced': 'Balanced',
+  'settings.agents.balancedHint': 'Work freely. Ask before sharing.',
+  'settings.agents.independent': 'Independent',
+  'settings.agents.independentHint': 'Follow your saved rules',
+  'settings.agents.independentWarning': 'Hermes will run gated actions without asking.',
+  'settings.agents.confirm': 'Confirm',
+  'settings.agents.confirmIndependent': 'Confirm independent mode',
+  'settings.agents.autonomyUpdated': 'Autonomy updated',
+  'settings.agents.autonomyFailed': 'Could not change autonomy',
+  'settings.agents.autonomyUnreadable': 'Could not read the approval mode: {error}',
 
   // When the voice Hermes speaks with fails and the computer's own voice stands in, or nothing can.
   // {voice} is a voice.name message that begins the sentence; {system} is voice.name.mac or
