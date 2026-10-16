@@ -95,6 +95,8 @@ export interface DocumentResult {
   usesRates: boolean
   /** Every function to draw, in line order. */
   functions: PlotFunction[]
+  /** The locale the note was read in, so its lines read the same again (Copy to Sheets). */
+  locale?: string
 }
 
 export interface EvalResult {
