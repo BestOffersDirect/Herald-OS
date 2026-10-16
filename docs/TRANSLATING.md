@@ -3,8 +3,8 @@
 Herald OS can show itself in English, in Brazilian Portuguese (Português (Brasil)) or in Simplified
 Chinese (简体中文). So far that covers the
 menus Herald builds, the menu bar, the main window's sidebar, the Overview, the command bar, the
-notifications panel, and Settings' navigation, section titles, General section and the Autonomy
-choices in Hermes & agents; the rest of the shell is English until its
+notifications panel, and Settings' navigation, section titles, General section and Hermes & agents
+(whose model provider choice first-run setup shows too); the rest of the shell is English until its
 strings move into the catalogs. This page says how the strings work, how to translate them, and how
 to add a language.
 
@@ -33,7 +33,8 @@ Each message has a key and English text, sometimes with slots or plural forms:
 - Plural forms follow the language's own categories: English has `one` and `other`, Chinese only
   `other`. The code chooses by `{count}`.
 - A comment above a message in `en.ts` says what a slot holds or what must stay English (the words
-  the voice and dictation listen for).
+  the voice and dictation listen for, a Hermes command such as `/model`, a file or setting name).
+  A slot shown in monospace, such as `{variable}` in the API key form, holds that name.
 - Product names stay as they are: Herald OS, Hermes, Herald Canvas, Docs, Sheets and Slides.
   Hermes's own terms follow Hermes Desktop's catalogs (`upstream/hermes-agent/apps/desktop/src/i18n/`),
   so Hermes reads the same in both apps.
@@ -48,7 +49,10 @@ npx tsc -p tsconfig.json --noEmit
 ```
 
 The test fails when a key is not in English, a slot is missing or added, a plural category is not
-one your language has, or a message is empty; the type check catches a misspelled key. A message
+one your language has, a message is empty, or a message is the English copied unchanged; the type
+check catches a misspelled key. A message may read as in English only when what it keeps is product
+names, slots, or a word your language writes the English way (Wi-Fi, Software), which goes in the
+short list for your language in `shared/locales/locales.test.ts`. A message
 your file lacks shows in English, never as its key: compare the keys of `en.ts` with yours to find
 them. To see the result, run the shell (`npm run dev`), pick the language in Settings > General >
 Language, and look over the surfaces above. Screenshots of anything that reads wrong, is cut off or
