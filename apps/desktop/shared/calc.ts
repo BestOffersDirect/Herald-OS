@@ -9,7 +9,7 @@
 export const CALC_RATES_URL = 'https://api.frankfurter.dev/v2/providers/ecb/rates'
 /** Rates fetched within this long are not fetched again. */
 export const CALC_RATES_MAX_AGE_MS = 24 * 60 * 60_000
-/** A fetch that failed is not tried again sooner than this. */
+/** A fetch that failed is not tried again sooner than this, unless asked to refresh. */
 export const CALC_RATES_RETRY_MS = 60 * 60_000
 
 /** How much of each currency one euro buys, on the day the ECB published it. */
@@ -24,8 +24,10 @@ export interface CalcRates {
 }
 
 /**
- * fresh: fetched within the day. cached: the last rates, no fetch due. offline: the last rates
- * after a fetch failed. off: the setting is off, so the last rates answer. none: no rates yet.
+ * The first of these that holds. off: the setting is off; nothing is fetched and the last rates
+ * answer, or none. none: no rates yet; `error` says why when the last fetch failed. offline: the
+ * last fetch failed; the rates from before it answer. fresh: fetched within CALC_RATES_MAX_AGE_MS.
+ * cached: older rates, read without fetching because the caller asked for the cache only.
  */
 export type CalcRatesStatus = 'fresh' | 'cached' | 'offline' | 'off' | 'none'
 
@@ -106,7 +108,8 @@ type Unsubscribe = () => void
 export interface CalcBridge {
   /**
    * The rates: fetched first when a fetch is due and allowed, then the cached ones. `cached` never
-   * fetches; `refresh` fetches now unless the setting is off.
+   * fetches; `refresh` fetches now unless the setting is off. Never rejects: a failed fetch shows
+   * in the status.
    */
   rates: (options?: { cached?: boolean; refresh?: boolean }) => Promise<CalcRatesState>
   listNotes: () => Promise<CalcNoteSummary[]>
