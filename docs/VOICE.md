@@ -42,6 +42,40 @@ to, a missing package), Herald OS switches that setting to the free provider (`l
 to text, `edge` for speech), tells you once, and retries. Pick a different provider in Settings
 whenever you want it back.
 
+#### When a voice fails
+
+Speech goes down a chain, so a reply is heard even when a voice fails:
+
+1. **The provider Hermes is set to use** (`tts.provider`).
+2. **The free Edge voice**, when that provider is not set up (as above). A failure of the Edge voice
+   itself is never treated as a setup problem: it needs no key, so there is nothing to switch to.
+3. **The computer's own voice**, when Hermes's voice still fails, for whatever reason: Microsoft
+   refusing the Edge voice (HTTP 403), no network, a missing `edge_tts` module, a provider that is
+   down. On macOS that is `say`, in the voice chosen under System Settings > Accessibility > Spoken
+   Content. On Linux it is espeak-ng (or espeak) in the system's language, else flite, which speaks
+   only English and so only stands in for an English locale.
+
+The same chain speaks conversation replies, spoken notifications and Settings > Voice > Say hello.
+Every reply tries Hermes's voice first, so it is back as soon as it works again.
+
+Electron main renders the system voice to WAV files a few sentences at a time, the text passed to
+the program on stdin (at most 1,000 characters and 30 seconds a part, about five minutes a reply),
+and they play on the player Hermes's whole-reply speech uses. So barge-in, the stop button and the
+end of the conversation cut it off as they do any other voice, it plays on the same speakers, and
+echo cancellation keeps it out of the microphone, which it could not do for a voice the system
+played by itself.
+
+The first time in a session the system voice stands in, a notice says so in plain words: "Microsoft's
+free voice isn't working right now, so Herald OS is using your Mac's voice. Updating Hermes usually
+fixes it." (on Linux, "the system voice"). When the computer has no voice of its own, or it fails
+too, a notice says that instead, also once, and replies show in the captions without being spoken.
+Neither repeats for later replies, conversations or notifications; the error itself goes to
+`~/.hermes/logs/herald-os.log`. Say hello reports which voice spoke: Hermes's, or that it failed and
+the system voice said hello instead.
+
+The Herald OS Linux image has flite (ffmpeg's filters need it) but not espeak-ng, so its system voice
+speaks English only.
+
 ### Live (opt-in)
 
 OpenAI `gpt-live-1` listens and speaks over WebRTC, full duplex, and delegates every real request
@@ -263,6 +297,19 @@ model switches between fast, accurate, multilingual and most-accurate models.
   Today's Hermes installs keep no venv in the checkout; there
   `hermes pm install --extra voice --extra edge-tts --extra wake-openwakeword` adds them, and
   `hermes update` keeps them. The Herald OS image adds them at its first boot either way.
+- **Microsoft's free voice returns 403**: the system voice speaks instead, and herald-os.log shows
+  `TTS generation failed (edge): 403`. Microsoft changed what its read-aloud service asks for, and
+  Hermes needs edge-tts 7.3.0 or newer to answer it. Until Hermes ships a newer edge-tts, upgrade it in
+  Hermes's own environment with Hermes's uv:
+
+  ```bash
+  ~/.hermes/bin/uv pip install --python <hermes venv python> "edge-tts>=7.3.1"
+  ```
+
+  `<hermes venv python>` is `venv/bin/python` in a Hermes checkout that has a venv, or the
+  `venv/bin/python` under `~/.hermes/installs/<install>/environments/<environment>/` for an install
+  `hermes pm` manages. A `hermes update` may put the older edge-tts back until Hermes raises its pin,
+  so run the upgrade again if the 403 returns. Herald OS never changes Hermes's environment itself.
 - When the model provider is signed out (expired or revoked login), Herald OS shows its sign-in
   card: one click opens the provider's page with a one-time code inside Herald OS, as a Herald OS
   window beside the card (never the system browser), and both the page and the card close
@@ -290,6 +337,9 @@ apps/desktop/src/lib/voice/vad.ts        energy endpointing (utterance start/end
 apps/desktop/src/lib/voice/chained-engine.ts  free engine
 apps/desktop/src/lib/voice/live-engine.ts     GPT-Live engine (WebRTC + delegation loop)
 apps/desktop/src/lib/voice/speak-stream.ts    /api/audio/speak-stream player, POST /api/audio/speak fallback
+apps/desktop/src/lib/voice/speak-fallback.ts  the speech chain (provider, free voice, system voice) and its notices
+apps/desktop/src/lib/voice/system-voice.ts    the computer's own voice, a few sentences at a time
+apps/desktop/electron/platform/system-voice.ts  say / espeak-ng / flite rendered to WAV in main
 apps/desktop/src/lib/voice/speech-text.ts     sanitizer, sentence chunker, commentary chunking, stop phrases
 apps/desktop/src/lib/voice/math.ts            spoken math: the sentence Herald Calc's engine reads, or null (pure)
 apps/desktop/src/features/voice/               VoiceOrb, MicButton, VoiceIndicator
@@ -297,4 +347,4 @@ apps/desktop/src/features/office/typing.ts     dictation into the Docs page, She
 apps/desktop/electron/ipc/voice.ts        mic permission, audio WebSocket URL, global hotkey
 ```
 
-Decisions: `docs/DECISIONS.md` ADR-013, ADR-024 (and the ADR-007 amendment).
+Decisions: `docs/DECISIONS.md` ADR-013, ADR-024, ADR-028 (and the ADR-007 amendment).

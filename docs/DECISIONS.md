@@ -1527,3 +1527,37 @@ Limits. The ECB publishes about 30 currencies once each working day, so rates ar
 and some currencies are missing; they are reference rates, not what a bank charges. Months and
 years as durations are calendar months and years in date sentences and average lengths in unit
 arithmetic. The voice grammar is English.
+
+## ADR-028: When Hermes cannot speak, the computer's own voice does, on Herald's player
+
+**Status: Accepted.**
+
+Microsoft began asking its free read-aloud service for a new token, and the edge-tts Hermes pinned
+(7.2.7) got HTTP 403 for every line. Edge is the free provider the voice falls back to (ADR-013), so
+nothing was left to try: the voice went quiet, and every reply showed the raw error.
+
+- **The chain ends with the computer's voice.** Speech goes to the configured provider, then to the
+  free Edge voice when that provider is not set up, then to the system voice when Hermes's voice
+  still fails for any reason. A failure of the free provider is never a setup problem, so it does
+  not touch the config.
+- **Rendered in main, played by the renderer.** Main renders a line to WAV (`say -o` on macOS;
+  espeak-ng, espeak, then flite on Linux) with the text on stdin, and the renderer plays it on the
+  whole-utterance player Hermes's speech uses. Echo cancellation only removes what Chromium plays,
+  so a voice played by `say` itself, or by `speechSynthesis` (which hands speech to the system), would
+  reach the microphone and trip barge-in on itself. The shared player also keeps the stop button,
+  barge-in, the end of a conversation and the output device working as they do for Hermes's voices.
+- **A few sentences at a time.** `say` takes a second or two to start and renders about five times
+  faster than it speaks, so a reply is cut into a short first part and longer ones after it, each
+  rendering while the one before plays. A part is at most 1,000 characters and 30 seconds, main runs
+  four renders at once at most, and a reply is cut at about five minutes.
+- **A stop drops lines still being made.** Barge-in, the stop button and the end of a conversation
+  make every playback ticket taken before them stale, and a line whose ticket is stale is never
+  played. That also closes an older gap, where Edge audio that arrived after a barge-in played over
+  the next request.
+- **Once a session, in plain words.** The first stand-in, and the first time nothing can speak, each
+  post one notice; the error goes to the log. Say hello reports which voice spoke instead.
+- **Rejected: `speechSynthesis`.** No echo cancellation, no shared stop, and on Linux it needs
+  speech-dispatcher and a Chromium switch the image has neither of.
+- **Linux.** The image has flite only because ffmpeg-free's filters and WebKitGTK need it. It speaks
+  English, so it stands in only for an English locale. espeak-ng would cover other languages for about
+  24 MiB installed (9.4 MiB to download); it is not in the image yet.
