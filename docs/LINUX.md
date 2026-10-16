@@ -230,10 +230,17 @@ The manual covers these for people using them: [Make it yours](manual/make-it-yo
   Provisioning installs it (`HERALD_OS_OMAKASE=0` to skip); `herald-os omakase install` re-syncs.
 - **Updates**: `herald-os update` pulls the repo on the chosen channel (`herald-os channel
   stable|edge`; both track `main` until releases exist), runs one-shot `linux/migrations/*.sh`
-  (tracked in `/var/lib/herald-os/migrations`), upgrades the system (dnf on Fedora, pacman and the
+  (each says `# Runs as: user`, `root` or `user, with sudo`; user ones run as the person, even under
+  sudo (then from the installed migrations, which the person can read, not root's `~/Herald-OS`), and
+  are tracked in their `~/.local/state/herald-os/migrations`, root ones in
+  `/var/lib/herald-os/migrations`), upgrades the system (dnf on Fedora, pacman and the
   AUR helper on Arch; on Omarchy it leaves the system to `omarchy-update`, which Omarchy requires;
-  the Herald OS image updates as a whole with `bootc upgrade`) and Flatpaks, updates Hermes Agent,
-  rebuilds the shell and restarts it. A daily user timer runs `herald-os update
+  the Herald OS image updates as a whole with `bootc upgrade`, or `rpm-ostree upgrade` when the
+  booted or staged deployment has rpm-ostree changes such as layered, removed or replaced packages)
+  and Flatpaks (the user's and the system installation's), updates Hermes Agent, rebuilds the shell
+  and restarts it. The system and system Flatpak steps need root: as root, with sudo that needs no
+  password, or in a terminal where sudo asks for one. Without root (from the menu) they are skipped
+  with a line saying to run `sudo herald-os update`, and they stay out of `problems=` and the exit status. A daily user timer runs `herald-os update
   --check`, which lights the menu-bar indicator when anything is pending. A repo pushed from a Mac
   (no `.git`) skips the shell step; use `linux/dev/push.sh` there. A release tarball in
   `/opt/herald-os` updates from GitHub releases instead
@@ -314,7 +321,9 @@ there); the system itself changes only by a whole new image.
 
 **Updates you can undo.** `herald-os update` runs `bootc upgrade` (the image tag of the channel:
 `stable` follows releases, `edge` follows main (rebuilt when image files change);
-`herald-os channel edge` switches with `bootc switch`), then Flatpaks and `hermes update`. The new
+`herald-os channel edge` switches with `bootc switch`; with packages layered on the image, booted
+or staged for the next restart, it runs `rpm-ostree upgrade`, which keeps them), then Flatpaks and
+`hermes update`. The new
 image starts on the next restart and the previous one stays in the boot menu; `herald-os rollback`
 (or Update > Go back to the previous version) makes it the default again.
 
@@ -633,7 +642,9 @@ systemctl reboot
 
 If `bootc` is missing or refuses, `sudo rpm-ostree rebase
 ostree-unverified-registry:ghcr.io/iamlukethedev/herald-os:stable` switches through rpm-ostree instead
-(`unverified`: without a signature check, as above).
+(`unverified`: without a signature check, as above). It is the right reference even once the image is
+signed: it still applies a `sigstoreSigned` entry for the repository in `/etc/containers/policy.json`,
+whereas `ostree-image-signed:` refuses every pull while that file's default is `insecureAcceptAnything`.
 
 **When there is no login screen.** greetd waits for `herald-os-login.service`, so if that fails, the
 first console stays empty. Press Ctrl+Alt+F2 for a text console (Herald OS keeps `getty@tty2` on),
