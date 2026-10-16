@@ -29,14 +29,14 @@ units are where answers go wrong; the engine does not make those mistakes.
 
 ## Show the working
 
-Every answer has `steps`, one line each ("20% of 84.50 = 0.2 × 84.50", "= 16.90"). Show them
+Every answer has `steps`, one line each ("20% of 84.50 = 84.50 × 0.20", "= 16.90"). Show them
 briefly with the answer: a line or two, never a wall. The answer itself:
 
-- `display`: the answer as Herald shows it ("16.90", "3.11 mi", "R$564.81"); quote this one.
+- `display`: the answer as Herald shows it ("16.9", "3.1069 mi", "R$564.81"); quote this one.
 - `value`: the exact value as a plain decimal; `fraction` the exact fraction when there is one.
 - `kind` (number, percent, unit, currency, date, time, duration), `unit` (a unit, a currency's
   ISO code, a duration's unit) and `zone` for a time.
-- `result`: the one-line summary, "20% of 84.50 = 16.90".
+- `result`: the one-line summary, "20% of 84.50 = 16.9".
 
 ## The forms
 

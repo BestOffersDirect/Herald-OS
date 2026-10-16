@@ -149,7 +149,7 @@ day's rates first and a plot may read a whole workbook. Arguments the action doe
   wants to see the graph (`calc.open` opens Herald Calc on a view, a keypad or a new note).
   `history` reads the history and has no way to clear it; clearing it is the person's, in Herald
   Calc. Each answer Hermes gets is kept in that history, marked as from Hermes.
-- **What comes back.** `result` is the shell's line ("20% of 84.50 = 16.90"); then `display` (as
+- **What comes back.** `result` is the shell's line ("20% of 84.50 = 16.9"); then `display` (as
   Herald shows it), `value` (exact, a plain decimal), `kind`, `unit` (a unit, or a currency's ISO
   code), `fraction` (when the value is a fraction that never ends), `zone` (for a time), `steps`,
   `ratesDate`, and for several lines `lines`, each with its `display` or its `error`. `plot`

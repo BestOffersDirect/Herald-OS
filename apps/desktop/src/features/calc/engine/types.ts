@@ -71,7 +71,7 @@ export interface LineResult {
   /** The variable this line assigns ("budget = 1,200"). */
   name?: string
   value?: CalcValue
-  /** The value as the notepad shows it, in the locale: "97.18", "3.11 mi", "$1,234.50", "Fri, Dec 25", "98 days". */
+  /** The value as the notepad shows it, in the locale: "97.175", "3.1069 mi", "$1,234.50", "Fri, Dec 25", "98 days". */
   display?: string
   /** The working, one step a line: "20% of 84.50 = 0.2 × 84.50", "= 16.90". */
   steps?: string[]

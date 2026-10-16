@@ -92,7 +92,7 @@ export const CALC_KEYPADS: readonly CalcKeypad[] = ['classic', 'scientific', 'pr
 export interface CalcPrefs {
   /** Fetch the ECB rates at most once a day; off, the last rates keep answering and nothing is fetched. */
   fetchRates: boolean
-  /** Soft key sounds, made with Web Audio. */
+  /** Soft key sounds, synthesized with Web Audio. */
   sounds: boolean
   /** How the scientific keypad reads angles. */
   angle: 'deg' | 'rad'
