@@ -8,8 +8,8 @@ import type { ConversationEndReason, ConversationEngine, TurnHandlers, VoiceCapt
 import { matchIntent } from '../lib/voice/intents.ts'
 import { rememberFocusedEditable } from './edit-target.ts'
 import { runCommand } from './os-commands.ts'
-import { withProviderFallback } from '../lib/voice/provider-fallback.ts'
-import { $speakLevel, speakOnce, stopFallbackAudio } from '../lib/voice/speak-stream.ts'
+import { type SpeechOutcome, speakWithFallbacks } from '../lib/voice/speak-fallback.ts'
+import { $speakLevel, stopFallbackAudio } from '../lib/voice/speak-stream.ts'
 import { rest } from '../lib/rest.ts'
 import { sanitizeForSpeech } from '../lib/voice/speech-text.ts'
 import { type LocalSttConfig, sttTuningPatch } from '../lib/voice/stt-tuning.ts'
@@ -551,13 +551,17 @@ export function setLiveSessionSeconds(seconds: number): void {
   patch({ live: { ...$voice.get().live, sessionSeconds: seconds } })
 }
 
-/** Speak a line, switching the Hermes TTS provider to the free one when the configured one cannot run. */
-export function speakWithFreeFallback(text: string, signal?: { stopped: boolean }): Promise<void> {
-  return withProviderFallback(
-    'tts',
-    () => speakOnce(text, signal),
-    (from, to) => notify({ title: 'Text to speech switched', body: `${from ?? 'The configured provider'} is not set up; using the free ${to} voice. Change it in Settings > Voice.`, level: 'info' })
-  )
+/**
+ * Speak a line, switching the Hermes TTS provider to the free one when the configured one cannot
+ * run, and with the computer's own voice when Hermes's still fails. `notice: false` leaves telling
+ * the person to the caller, which reports the outcome itself.
+ */
+export function speakWithFreeFallback(text: string, signal?: { stopped: boolean }, { notice = true }: { notice?: boolean } = {}): Promise<SpeechOutcome> {
+  return speakWithFallbacks(text, {
+    signal,
+    onSwitched: (from, to) => notify({ title: 'Text to speech switched', body: `${from ?? 'The configured provider'} is not set up; using the free ${to} voice. Change it in Settings > Voice.`, level: 'info' }),
+    notify: notice ? (title, body, level) => notify({ title, body, level }) : undefined
+  })
 }
 
 let announcing: { stopped: boolean } | null = null

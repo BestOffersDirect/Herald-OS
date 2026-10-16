@@ -564,6 +564,12 @@ export interface OsControlReply {
 /** Authenticated WebSocket endpoints the renderer may dial besides the gateway. */
 export type AudioWsKind = 'speak-stream'
 
+/**
+ * A line said by the computer's own voice (`say` on macOS, espeak-ng or flite on Linux) as a WAV
+ * clip, or why it could not be: `missing` when this computer has no voice for the person's language.
+ */
+export type SystemSpeech = { ok: true; audio: Uint8Array<ArrayBuffer>; mimeType: string } | { ok: false; reason: 'missing' | 'failed'; detail: string }
+
 export interface HeraldOSPrefs {
   /** The language Herald OS is shown in; unset follows the system's languages. */
   language?: LanguageSetting
@@ -1016,6 +1022,8 @@ export const IPC = {
   voiceRequestMicrophone: 'herald-os:voice:request-microphone',
   voiceMicrophoneStatus: 'herald-os:voice:microphone-status',
   voiceAudioWsUrl: 'herald-os:voice:audio-ws-url',
+  /** Render a line with the computer's own voice, the last resort when Hermes cannot speak. */
+  voiceSystemSpeech: 'herald-os:voice:system-speech',
   /** Main -> renderer: the global voice hotkey was pressed. */
   voiceHotkey: 'herald-os:voice:hotkey',
 

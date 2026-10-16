@@ -70,6 +70,7 @@ import {
   type SwitchName,
   type SwitchState,
   type SystemInfo,
+  type SystemSpeech,
   type SystemStats,
   type TerminalCreateOptions,
   type TerminalHandle,
@@ -535,6 +536,8 @@ const api = {
     requestMicrophone: (): Promise<MicPermission> => ipcRenderer.invoke(IPC.voiceRequestMicrophone),
     /** Tokenized URL for an authenticated audio WebSocket (speak-stream). */
     audioWsUrl: (kind: AudioWsKind): Promise<string> => ipcRenderer.invoke(IPC.voiceAudioWsUrl, kind),
+    /** A line said by the computer's own voice as a WAV clip, for when Hermes cannot speak. */
+    systemSpeech: (text: string): Promise<SystemSpeech> => ipcRenderer.invoke(IPC.voiceSystemSpeech, text),
     /** The global voice hotkey was pressed (fires in every window; the main surface acts). */
     onHotkey: (listener: () => void): Unsubscribe => subscribe<void>(IPC.voiceHotkey, () => listener())
   },
