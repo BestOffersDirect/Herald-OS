@@ -7,10 +7,10 @@ programmer modes, graphs, a searchable history, and buttons that turn a note int
 a table in a document. It is the same exact engine Hermes uses for math, so the numbers Hermes
 gives you are worked out, not guessed.
 
-Open it from Applications (`Cmd+Shift+A`, `Super+A` on Linux; type "calculator", "calc", "convert"
-or "units"), by asking Hermes, or by saying "open the calculator". On Herald OS Linux it opens as a
-compact floating window over your work and shows in the Dock while it runs. `Cmd+1` to `Cmd+4`
-(`Ctrl` on Linux) switch between its Notes, Keypad, Graph and History views.
+Open it from the Dock, from Applications (`Cmd+Shift+A`, `Super+A` on Linux; type "calculator",
+"calc", "convert" or "units"), by asking Hermes, or by saying "open the calculator". On Herald OS
+Linux it opens as a compact floating window over your work. `Cmd+1` to `Cmd+4` (`Ctrl` on Linux)
+switch between its Notes, Keypad, Graph and History views.
 
 ## The notepad
 
