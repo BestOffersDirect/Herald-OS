@@ -1458,3 +1458,64 @@ serve one socket path, so only the one started last hears live steps. The activi
 the Room showed while the Hermes window fed it: a reload, a lost connection or a closed Herald is a
 gap, a day is the local day it was written on, and a replay names pets by kind. Cost meters show a
 helper's tokens only once it finishes, and the total is of the work in the room now, not of a day.
+
+## ADR-027: Herald Calc is math.js under Herald's own sentence parser, and the math tool Hermes uses
+
+**Status: Accepted.**
+
+Herald Calc is a notepad where each line is a calculation written the way people say it ("20% of
+84.50", "5 km in miles", "days until Dec 25", "9am Sydney in New York"), answered as they type,
+with a classic keypad and its scientific and programmer modes, graphs, a searchable history, and
+links to Herald Sheets and Docs. The same engine answers Hermes's `calc` tool, the `calc.*`
+commands, `herald-os calc` and simple spoken math, so a number Hermes gives is worked out, not
+guessed.
+
+- **math.js for numbers, units and functions; Herald's parser for sentences.** math.js (Apache-2.0)
+  brings exact decimal arithmetic on arbitrary-precision decimals, fractions, a unit system whose
+  conversions include temperature offsets, and the usual functions, in one well-tested library. The
+  forms people write (percent of, off and on, "what % of", "split 3 ways", labels, names, totals,
+  "in" and "to" conversions, currency symbols, number styles of their region) are read by Herald's
+  own parser and evaluator, which keep exact fractions themselves and hand math.js 64-digit
+  decimals, units and functions, so math.js never sees English and every form has a test.
+  math.js is loaded only when Herald Calc, a `calc.*` command or voice math first needs it: it is a
+  chunk of its own (about 180 KB compressed), and so are Herald's engine and the window. What the
+  shell loads at start is the commands and the voice grammar with the words and places it knows,
+  about 27 KB compressed.
+- **Dates and time zones from the platform.** Calendar arithmetic and time-zone conversion use Intl
+  and the system's time-zone database, daylight saving included, so nothing is fetched for them and
+  nothing goes stale with the app.
+- **Currencies from the ECB, at most once a day, and nothing else on the network.** The European
+  Central Bank's daily reference rates come through Frankfurter's keyless v2 route for that provider
+  (`api.frankfurter.dev/v2/providers/ecb/rates`); Frankfurter's operators encourage caching, set no
+  quotas and log no personal data, and the ECB allows reuse of its rates with the source named. Main
+  fetches, never a window: only when a calculation names a currency and the cached rates are a day
+  old, never twice within a day, and a failed try waits an hour. The request is a bare GET with an
+  Accept header. The rates live in Herald's data folder, so conversions work offline from the last
+  rates with a quiet "Rates from <date>", and a setting turns the fetch off.
+- **One engine for the person and for Hermes.** The `calc.*` commands in the registry run the
+  engine in the shell; the bridge's `calc` tool relays to them and is read tier, because it only
+  computes: it opens no window (its plot action returns what a graph shows; `os_ui` with
+  `calc.plot` shows one) and reads the history without clearing it. The `herald-calc` skill tells
+  Hermes to use it for any arithmetic, percentage, unit, currency, date or time-zone math and to
+  show the working the engine returns. The CLI runs the same commands.
+- **Voice math on the fast path, and only simple math.** A pure grammar accepts an utterance only
+  when every word is a number, an operator word, a unit, a currency, a place or a date word, and
+  hands it to `calc.eval`, which answers at once with the voice Herald already speaks with.
+  Anything else, including "15% of my rent", goes to Hermes unchanged.
+- **A plotter of our own on a canvas.** Drawing functions well is mostly sampling: adaptive steps
+  where a curve bends, no line drawn across an asymptote or a jump, gaps where a function has no
+  value. A small canvas plotter does that exactly, takes its colours from Herald's theme tokens,
+  and adds no dependency; ECharts, already in the bundle for Sheets, samples evenly and knows
+  nothing of asymptotes.
+- **Copy to Sheets writes formulas.** Each line becomes a row: a formula where the line maps
+  cleanly onto a spreadsheet (arithmetic, percentages, splits, sums, names used later as cell
+  references), the value otherwise, and the line's label in the next column. In panels mode, where
+  Herald Sheets is another process, Calc opens a blank workbook there and writes into it through
+  main's Office relay, since `sheets.new` there opens a workbook without values.
+- **Everything stays on the computer.** Notes (a JSON file each), the history (the newest 2,000)
+  and the rates are in `calc/` in Herald's data folder.
+
+Limits. The ECB publishes about 30 currencies once each working day, so rates are a day old at best
+and some currencies are missing; they are reference rates, not what a bank charges. Months and
+years as durations are calendar months and years in date sentences and average lengths in unit
+arithmetic. The voice grammar is English.
