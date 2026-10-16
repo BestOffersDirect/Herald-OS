@@ -73,8 +73,8 @@ Neither repeats for later replies, conversations or notifications; the error its
 `~/.hermes/logs/herald-os.log`. Say hello reports which voice spoke: Hermes's, or that it failed and
 the system voice said hello instead.
 
-The Herald OS Linux image has flite (ffmpeg's filters need it) but not espeak-ng, so its system voice
-speaks English only.
+The Herald OS Linux image lists flite for this, but not espeak-ng, so its system voice speaks English
+only.
 
 ### Live (opt-in)
 

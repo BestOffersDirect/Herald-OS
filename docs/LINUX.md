@@ -178,6 +178,9 @@ screensaver](manual/lock-and-idle.md), [dictation and emoji](manual/dictation-an
   click elsewhere or the keys going to another window close it.
 - **Dictation and emoji** (`herald-os dictate`, `herald-os emoji`) type into the focused app with
   `wtype`; dictation transcribes through Hermes's speech-to-text.
+- **The system voice.** When Hermes's own voice fails, the shell says replies with espeak-ng in the
+  system's language where it is installed, else with flite in English, which the image lists for
+  this ([the voice's fallback chain](VOICE.md#when-a-voice-fails)).
 - **Keymaps.** `herald-os keymap omarchy` renders `~/.config/niri/herald-os.kdl` from the installed
   template (`linux/niri/config.kdl`) with Omarchy's `Super+C/X/V` copy, cut and paste;
   `herald-os keymap herald` restores Herald's keys. Every session start renders it again, so an

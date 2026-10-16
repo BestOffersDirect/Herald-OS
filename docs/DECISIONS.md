@@ -1560,6 +1560,7 @@ nothing was left to try: the voice went quiet, and every reply showed the raw er
   post one notice; the error goes to the log. Say hello reports which voice spoke instead.
 - **Rejected: `speechSynthesis`.** No echo cancellation, no shared stop, and on Linux it needs
   speech-dispatcher and a Chromium switch the image has neither of.
-- **Linux.** The image has flite only because ffmpeg-free's filters and WebKitGTK need it. It speaks
-  English, so it stands in only for an English locale. espeak-ng would cover other languages for about
-  24 MiB installed (9.4 MiB to download); it is not in the image yet.
+- **Linux.** The image lists flite itself. ffmpeg-free's filters (and the omakase apps' WebKitGTK)
+  pull it in as well, so listing it adds nothing to the image, but the voice no longer depends on
+  them. It speaks English, so it stands in only for an English locale. espeak-ng would cover other
+  languages for about 24 MiB installed (9.4 MiB to download), and is not in the image.

@@ -75,6 +75,9 @@ exfatprogs
 grim
 socat
 curl
+# The system voice: flite says replies in English when Hermes's own voice fails. ffmpeg-free (and the
+# omakase apps' WebKitGTK) pull it in too; it is listed so the voice does not depend on them.
+flite
 # Herald Canvas converts HEIF and AVIF stills (libheif; HEVC-compressed HEIC photos also need RPM Fusion's
 # libheif-freeworld, which the image does not add) and TIFF, camera RAW and the like (ImageMagick) before opening them.
 libheif-tools

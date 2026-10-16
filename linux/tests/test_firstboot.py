@@ -687,6 +687,12 @@ def test_the_image_has_intel_wi_fi_firmware_and_exfat():
     assert "exfatprogs" in packages
 
 
+def test_the_image_lists_the_system_voice_the_shell_falls_back_to():
+    # ffmpeg-free (and the omakase apps' WebKitGTK) pull flite in today; the voice must not depend on that.
+    assert "flite" in image_packages()
+    assert "command: 'flite'" in (ROOT / "apps" / "desktop" / "electron" / "platform" / "system-voice.ts").read_text()
+
+
 DOWNLOAD = r"\b(?:curl|wget)\b"
 SHELL = r"(?:/\S*/)?(?:(?:busybox\s+)?(?:ba|z|da|k)?sh|python(?:3(?:\.\d+)?)?|perl|ruby|node)\b"
 SUDO = r"(?:sudo\b(?:\s+-\S+)*\s+)?(?:env\b(?:\s+\S+=\S*)*\s+)?"
