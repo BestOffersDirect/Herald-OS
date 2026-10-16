@@ -322,8 +322,9 @@ export async function playClip(src: string, ticket?: PlaybackTicket, onPlaying?:
   fallbackAudio = audio
 
   await new Promise<void>((resolve, reject) => {
+    settle.set(audio, resolve)
     audio.onended = () => resolve()
-    // Clearing `src` on an intentional stop also fires `error`; only a real failure rejects.
+    // An error or a refused play() after an intentional stop is not a failure; only a real one rejects.
     audio.onerror = () => (stoppedAudio.has(audio) ? resolve() : reject(new Error('audio playback failed')))
     audio.onpause = () => resolve()
     audio
@@ -350,6 +351,8 @@ export async function speakOnce(text: string, signal?: { stopped: boolean }): Pr
 }
 
 const stoppedAudio = new WeakSet<HTMLAudioElement>()
+/** Ends a clip's wait when it is stopped: once `load()` follows `pause()`, Chromium fires neither `pause` nor `error`. */
+const settle = new WeakMap<HTMLAudioElement, () => void>()
 
 /** Stop the clip playing now; lines still being synthesized keep their turn. */
 function silence(): void {
@@ -360,6 +363,7 @@ function silence(): void {
     audio.pause()
     audio.removeAttribute('src')
     audio.load()
+    settle.get(audio)?.()
   }
 }
 

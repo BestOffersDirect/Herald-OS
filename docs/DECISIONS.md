@@ -1553,7 +1553,9 @@ nothing was left to try: the voice went quiet, and every reply showed the raw er
 - **A stop drops lines still being made.** Barge-in, the stop button and the end of a conversation
   make every playback ticket taken before them stale, and a line whose ticket is stale is never
   played. That also closes an older gap, where Edge audio that arrived after a barge-in played over
-  the next request.
+  the next request. A stopped clip's wait now ends at once too: once the player takes the source
+  away and loads, Chromium fires neither `pause` nor `error`, so a stop used to leave a spoken
+  notification, and Say hello, waiting for good.
 - **Once a session, in plain words.** The first stand-in, and the first time nothing can speak, each
   post one notice; the error goes to the log. Say hello reports which voice spoke instead.
 - **Rejected: `speechSynthesis`.** No echo cancellation, no shared stop, and on Linux it needs

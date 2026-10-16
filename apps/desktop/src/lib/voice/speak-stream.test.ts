@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-/** Chromium's audio element, as far as the whole-utterance player uses it. */
+/**
+ * Chromium's audio element, as far as the whole-utterance player uses it. Like Chromium, `pause()`
+ * queues its event and `load()` drops it, and taking the source away and loading fires no `error`.
+ */
 class FakeAudio {
   static made: FakeAudio[] = []
   static refuse: Error | null = null
@@ -8,6 +11,7 @@ class FakeAudio {
   onended: (() => void) | null = null
   onerror: (() => void) | null = null
   onpause: (() => void) | null = null
+  private pauseEvent: ReturnType<typeof setTimeout> | null = null
 
   constructor(public src: string) {
     FakeAudio.made.push(this)
@@ -26,7 +30,7 @@ class FakeAudio {
   pause(): void {
     if (!this.paused) {
       this.paused = true
-      this.onpause?.()
+      this.pauseEvent = setTimeout(() => this.onpause?.(), 0)
     }
   }
 
@@ -36,7 +40,12 @@ class FakeAudio {
     }
   }
 
-  load(): void {}
+  load(): void {
+    if (this.pauseEvent) {
+      clearTimeout(this.pauseEvent)
+      this.pauseEvent = null
+    }
+  }
 
   finish(): void {
     this.paused = true
@@ -112,7 +121,7 @@ describe('the whole-utterance player', () => {
     expect(FakeAudio.made).toHaveLength(0)
   })
 
-  it('stops the clip playing now on barge-in, without an error', async () => {
+  it('stops the clip playing now on barge-in, and its wait ends though Chromium fires no pause or error', async () => {
     const spoken = speakOnce('Hello there.')
     speech.answer?.(EDGE_CLIP)
     await vi.waitFor(() => expect(FakeAudio.made).toHaveLength(1))
