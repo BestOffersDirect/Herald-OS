@@ -50,6 +50,10 @@ briefly with the answer: a line or two, never a wall. The answer itself:
 | Time zones | `9am Sydney in New York`, `now in Tokyo` |
 | Plain math | `(3 + 4) * 2`, `2^100`, `sqrt(144)`, `1/3 + 1/6` |
 
+Right after a plain number, `in` before a length means inches: `12 in cm` is 30.48 cm and `5 ft 10
+in cm` is 177.8 cm. Write the unit the person gave (`12 m in ft`, `12 inches in cm`), and put a
+bare number before `in` only when they meant inches.
+
 `calc action=convert value="5 ft 3 in" from=ft to=cm` converts an amount alone, when you have the
 number and both units apart.
 

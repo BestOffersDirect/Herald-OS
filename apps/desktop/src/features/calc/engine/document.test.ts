@@ -153,6 +153,12 @@ describe('names', () => {
     expect(lines[1].display).toBe('$35.00')
     expect(lines[3].display).toBe('3.1069 mi')
   })
+
+  it('converts a name as it is, where a plain number before "in" would be inches', async () => {
+    const { lines } = await note('x = 12\nx in cm\n12 in cm\nwidth = 5 ft\nwidth in cm\nhotel = $30\nhotel in EUR', RATES)
+
+    expect(lines.map(line => line.display)).toEqual(['12', '12 cm', '30.48 cm', '5 ft', '152.4 cm', '$30.00', '€24.00'])
+  })
 })
 
 describe('durations from the dates reader', () => {

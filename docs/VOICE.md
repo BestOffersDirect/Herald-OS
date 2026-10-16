@@ -135,9 +135,10 @@ sheet", "this paragraph" and "the selection" mean what you are looking at.
 51"), "what is two plus two", "three hundred and forty divided by eight", "half of 340", "84.50 plus
 15%", "2,400 plus 180 split three ways", "two to the power of ten", "the square root of 144", "how
 many miles is 10 km", "how many cups in a litre", "convert 100 dollars to euros" (at the European
-Central Bank's reference rates), "what time is it in Tokyo", "what's 9am Sydney in New York", "how
-many days until December 25th", "what date is 90 days from today". "Calculate …" and "work out …"
-count too. The grammar (`lib/voice/math.ts`) reads number words ("fifteen", "three hundred and
+Central Bank's reference rates), "what's 5 foot 10 in centimetres" (a plain number before "in" and a
+length is inches, as in the notepad, and the answer says so), "what time is it in Tokyo", "what's
+9am Sydney in New York", "how many days until December 25th", "what date is 90 days from today".
+"Calculate …" and "work out …" count too. The grammar (`lib/voice/math.ts`) reads number words ("fifteen", "three hundred and
 forty", "one point five", "a million", "two and a half", "half"), spoken operators (plus, minus,
 take away, times, divided by, over, to the power of, squared, cubed, square root of, percent, of,
 off, split N ways) and the units, currencies and places Herald Calc knows; every other word sends

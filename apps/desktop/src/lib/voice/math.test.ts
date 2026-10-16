@@ -5,6 +5,7 @@ import { spokenMath } from './math.ts'
 // A slice of the engine's vocabulary and places, so the grammar is tested apart from the engine.
 vi.mock('../../features/calc/engine/vocabulary.ts', () => ({
   UNIT_WORDS: new Set(['km', 'kilometres', 'kilometers', 'mile', 'miles', 'mi', 'm', 'metres', 'cm', 'centimetres', 'inch', 'inches', 'in', 'foot', 'feet', 'ft', 'litre', 'litres', 'liter', 'l', 'cup', 'cups', 'ml', 'kg', 'kilos', 'pound', 'pounds', 'lb', 'ounces', 'oz', 'degrees', 'fahrenheit', 'celsius', '°f', '°c', 'hour', 'hours', 'minute', 'minutes', 'second', 'seconds', 'day', 'days', 'week', 'weeks', 'year', 'years', 'gb', 'mb', 'gigabyte', 'megabytes', 'square feet', 'mph', 'km/h', 'a', 'am']),
+  LENGTH_WORDS: new Set(['km', 'kilometres', 'kilometers', 'mile', 'miles', 'mi', 'm', 'metres', 'cm', 'centimetres', 'inch', 'inches', 'in', 'foot', 'feet', 'ft']),
   CURRENCY_WORDS: new Set(['usd', 'eur', 'brl', 'gbp', 'jpy', 'dollar', 'dollars', 'euro', 'euros', 'pound', 'pounds', 'yen', 'reais', 'us dollars', 'us']),
   MATH_WORDS: new Set(['sqrt', 'square root', 'sin', 'log', 'pi', 'plus', 'minus', 'times', 'divided by', 'percent', 'of', 'total'])
 }))
@@ -89,7 +90,12 @@ describe('spoken math', () => {
     ['whats half a litre in cups', '0.5 litre in cups'],
     ['whats 15% of 100 dollars in euros', '15% of 100 dollars in euros'],
     ['what is 60 mph in km/h', '60 mph in km/h'],
-    ['what is 3 weeks in days', '3 weeks in days']
+    ['what is 3 weeks in days', '3 weeks in days'],
+    ['whats 12 in cm', '12 inches in cm'],
+    ['what is twelve in centimetres', '12 inches in centimetres'],
+    ['what is minus 3 in cm', '-3 inches in cm'],
+    ['whats 5 feet 10 in cm', '5 feet 10 inches in cm'],
+    ['what is 6 ft 2 in metres', '6 ft 2 inches in metres']
   ])('converts %j as %j', (said, sentence) => {
     expect(math(said)).toBe(sentence)
   })
@@ -151,6 +157,8 @@ describe('spoken math', () => {
     'fifteen',
     'what is 10 km',
     'whats 100 in euros',
+    'whats 12 in kg',
+    'what is 2 times 6 in cm',
     'what is 5 plus',
     'what is plus 5',
     'twelve fifty',

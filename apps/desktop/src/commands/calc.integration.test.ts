@@ -81,6 +81,25 @@ describe('Herald Calc commands with the real engine', () => {
     expect(Number(converted.data?.value)).toBeCloseTo(3.106856, 5)
   })
 
+  it('reads "in" after a plain number as inches for Hermes, the command line and the voice', async () => {
+    const inches = await value('12 in cm')
+
+    expect(inches.data).toMatchObject({ kind: 'unit', unit: 'cm', value: '30.48' })
+    expect(inches.summary).toBe('12 in cm = 30.48 cm')
+    expect((await value('x = 12\nx in cm')).data?.value).toBe('12')
+    expect((await runCommand('calc.convert', { value: '12', from: 'in', to: 'cm' }, AGENT)).data?.value).toBe('30.48')
+
+    const spoken = matchIntent("What's 12 in cm?")
+
+    expect(spoken).toMatchObject({ command: 'calc.eval', args: { text: '12 inches in cm' } })
+    expect((await value(String(spoken?.args.text), VOICE)).spoken).toMatch(/^12 inches is 30\.48 centimet(?:re|er)s$/)
+
+    const height = matchIntent("what's 5 foot 10 in centimetres")
+
+    expect(height).toMatchObject({ command: 'calc.eval', args: { text: '5 foot 10 inches in centimetres' } })
+    expect((await value(String(height?.args.text), VOICE)).spoken).toMatch(/^5 foot 10 inches is 177\.8 centimet(?:re|er)s$/)
+  })
+
   it('reads several lines as a note', async () => {
     const result = await value('budget = 1200\nbudget * 12')
 

@@ -1481,6 +1481,12 @@ guessed.
   chunk of its own (about 180 KB compressed), and so are Herald's engine and the window. What the
   shell loads at start is the commands and the voice grammar with the words and places it knows,
   about 27 KB compressed.
+- **"in" after a plain number is inches when a length follows.** "12 in cm" is 30.48 cm, the way
+  people write inches, and the 10 of "5 ft 10 in cm" is inches too. Only a number written there
+  counts: a name, a sum or a bracket before "in" keeps its value ("x in cm" is 12 cm after "x =
+  12", "12 + 3 in cm" is 15 cm), "to" and "as" never mean inches, and `calc.convert` writes "to"
+  for an amount with no unit. Voice math writes the inches out ("12 inches in cm"), so the answer
+  says what it read.
 - **Dates and time zones from the platform.** Calendar arithmetic and time-zone conversion use Intl
   and the system's time-zone database, daylight saving included, so nothing is fetched for them and
   nothing goes stale with the app.

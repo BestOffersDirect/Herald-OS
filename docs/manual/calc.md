@@ -28,6 +28,7 @@ number style, and follows every change you make.
 | `what % of 80 is 20` | 25% |
 | `2,400 + 180 split 3 ways` | 860 |
 | `5 km in miles` | 3.1069 mi |
+| `12 in cm` | 30.48 cm (12 inches) |
 | `350°F in C` | 176.67 °C |
 | `1.5 GB in MB` | 1,500 MB |
 | `100 USD in BRL` | the European Central Bank's rate of the day |
@@ -41,6 +42,9 @@ number style, and follows every change you make.
 - **Splitting.** "2,400 + 180 split 3 ways", "split 2,580 between 4 people", "$120 split 3 ways".
 - **Units.** Length, mass, temperature, volume, area, speed, data sizes and time, with "in", "to"
   or "as" to convert: "3 ft 4 in in cm", "60 mph * 2 hours in km", "2 TB / 50 MB/s in hours".
+  An "in" right after a plain number means inches when a length follows it: "12 in cm" is 30.48
+  cm, and "5 ft 10 in cm" is 177.8 cm. A name keeps its own value, so after "x = 12", "x in cm" is
+  12 cm.
 - **Currencies.** ISO codes ("100 USD in BRL") and symbols ("€50 + £20 in USD"); "$" is your
   region's dollar. See [Currency rates](#currency-rates).
 - **Dates and durations.** "days until Dec 25", "3 weeks from today", "Mar 3 to Jun 9 in days",

@@ -247,7 +247,9 @@ class Parser {
         break
       }
 
-      node = { type: 'convert', value: node, target: target.target, from: node.from, to: target.to }
+      const value = keyword === 'in' && target.target.type === 'unit' && isLength(target.target.unit) ? inInches(node) : node
+
+      node = { type: 'convert', value, target: target.target, from: node.from, to: target.to }
     }
 
     return node
@@ -1032,6 +1034,36 @@ class Parser {
 
 function takesUnit(node: Node): boolean {
   return node.type === 'number' || node.type === 'group' || (node.type === 'binary' && node.op === '*' && node.left.type === 'number' && node.right.type === 'number')
+}
+
+const INCH: UnitRef = { unit: 'inch', symbol: 'in' }
+
+function isLength(ref: UnitRef): boolean {
+  return UNIT_BY_NAME.get(ref.unit)?.measure === 'length'
+}
+
+/**
+ * What goes before "in" and a length, with a plain number there read as inches: "12 in cm",
+ * "-12 in cm" and the 10 of "5 ft 10 in cm". Sums, names and brackets keep their value.
+ */
+function inInches(node: Node): Node {
+  if (node.type === 'number') {
+    return { type: 'quantity', value: node, unit: INCH, from: node.from, to: node.to }
+  }
+
+  if (node.type === 'negate') {
+    const value = inInches(node.value)
+
+    return value === node.value ? node : { ...node, value }
+  }
+
+  if (node.type === 'binary' && node.op === 'juxt' && node.right.type === 'number') {
+    const before = node.left.type === 'binary' && node.left.op === 'juxt' ? node.left.right : node.left
+
+    return before.type === 'quantity' && isLength(before.unit) ? { ...node, right: inInches(node.right) } : node
+  }
+
+  return node
 }
 
 function refOf(entry: UnitWord): UnitRef {

@@ -94,7 +94,9 @@ export async function convert(amount: string, from: string, to: string, context:
   const quantity = amount.trim()
   const unit = from.trim()
   const carriesUnit = /[\p{L}$€£¥₹₩₺₪₱฿₽]/u.test(quantity)
-  const sentence = `${carriesUnit || !unit ? quantity : `${quantity} ${unit}`} in ${to.trim()}`
+  // "12 in cm" would read the plain number as inches, which nobody asked for here.
+  const keyword = carriesUnit || unit ? 'in' : 'to'
+  const sentence = `${carriesUnit || !unit ? quantity : `${quantity} ${unit}`} ${keyword} ${to.trim()}`
 
   return evaluate(sentence, context)
 }

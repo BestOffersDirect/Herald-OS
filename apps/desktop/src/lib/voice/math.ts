@@ -1,4 +1,4 @@
-import { CURRENCY_WORDS, MATH_WORDS, UNIT_WORDS } from '../../features/calc/engine/vocabulary.ts'
+import { CURRENCY_WORDS, LENGTH_WORDS, MATH_WORDS, UNIT_WORDS } from '../../features/calc/engine/vocabulary.ts'
 import { knownZoneNames } from '../../features/calc/engine/zones-names.ts'
 
 /*
@@ -187,7 +187,7 @@ function indexPhrases(phrases: Iterable<string>): PhraseIndex {
   for (const phrase of phrases) {
     const words = phrase.toLowerCase().split(/\s+/).filter(Boolean)
 
-    // A lone grammar word stays the grammar's: "in" is never inches here.
+    // A lone grammar word stays the grammar's: "in" is never a unit word here.
     if (words.length === 0 || (words.length === 1 && (RESERVED.has(words[0]) || numberWord(words[0])))) {
       continue
     }
@@ -627,14 +627,15 @@ function sum(tokens: readonly string[]): string | null {
     return null
   }
 
-  let text = expression.text
+  const inches = parse.operations === 0 && DIGITS.test(expression.text) && inchesBefore(tokens, expression.next)
+  let text = inches ? `${expression.text} inches` : expression.text
   let next = expression.next
   let converted = false
   let split = false
 
   while (next < tokens.length) {
     const into = tokens[next] === 'in' && tokens[next + 1] === 'to' ? next + 2 : next + 1
-    const target = !converted && expression.measured && CONVERSIONS.has(tokens[next]) ? unitAt(tokens, into) : null
+    const target = !converted && (expression.measured || inches) && CONVERSIONS.has(tokens[next]) ? unitAt(tokens, into) : null
 
     if (target) {
       text += ` in ${target.text}`
@@ -829,7 +830,7 @@ function partOperand(parse: Parse, part: Part): Operand | null {
   return unit ? { text: `${share} ${unit.text}`, next: unit.next, percent: false, measured: true } : { text: share, next: part.next, percent: false, measured: false }
 }
 
-/** A number and its units: "10 km", "100 dollars", "5 feet 3 inches". */
+/** A number and its units: "10 km", "100 dollars", "5 feet 3 inches", and the "5 feet 10" of "5 feet 10 in cm" in inches. */
 function quantity(words: readonly string[], number: Found): Operand {
   const pieces = [number.text]
   let next = number.next
@@ -841,6 +842,12 @@ function quantity(words: readonly string[], number: Found): Operand {
     const more = numberAt(words, next)
     const after = more ? unitAt(words, more.next) : null
 
+    if (more && LENGTH_WORDS.has(unit.text) && inchesBefore(words, more.next)) {
+      pieces.push(more.text, 'inches')
+      next = more.next
+      break
+    }
+
     if (!more || !after) {
       break
     }
@@ -850,6 +857,11 @@ function quantity(words: readonly string[], number: Found): Operand {
   }
 
   return { text: pieces.join(' '), next, percent: false, measured: pieces.length > 1 }
+}
+
+/** Whether "in" and a length start at `at`, where the engine reads a plain number just before as inches ("12 in cm"). */
+function inchesBefore(words: readonly string[], at: number): boolean {
+  return words[at] === 'in' && LENGTH_WORDS.has(unitAt(words, at + 1)?.text ?? '')
 }
 
 /** A unit or currency from `at`, in one or several words the engine reads ("km", "us dollars", "degrees fahrenheit", "km per hour"). */

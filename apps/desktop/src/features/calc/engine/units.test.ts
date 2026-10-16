@@ -143,8 +143,35 @@ describe('conversions', () => {
     expect((await answer('1.5 GB in MB')).steps).toEqual(['1 GB = 1,000 MB', '1.5 GB × 1,000 = 1,500 MB'])
   })
 
-  it('gives a plain number the unit it is converted to', async () => {
-    expect(await shown('12 in cm')).toBe('12 cm')
+  it('reads "in" after a plain number as inches when a length follows', async () => {
+    const inches = await answer('12 in cm')
+
+    expect(inches.value).toMatchObject({ kind: 'unit', unit: 'cm', exact: '30.48' })
+    expect(inches.steps).toEqual(['1 in = 2.54 cm', '12 in × 2.54 = 30.48 cm'])
+    expect(await shown('12 in')).toBe('12 in')
+    expect(await shown('12 in in cm')).toBe('30.48 cm')
+    expect(await shown('12 inches in cm')).toBe('30.48 cm')
+    expect(await shown('0.5 in mm')).toBe('12.7 mm')
+    expect(await shown('-12 in cm')).toBe('-30.48 cm')
+    expect(await shown('12 IN FT')).toBe('1 ft')
+    expect(await shown('(12 in cm)')).toBe('30.48 cm')
+    expect(await shown('12 in cm in mm')).toBe('304.8 mm')
+    expect(await shown('5 ft 10 in cm')).toBe('177.8 cm')
+    expect(await shown("5' 10 in cm")).toBe('177.8 cm')
+  })
+
+  it('gives a plain number the unit it is converted to otherwise', async () => {
+    expect(await shown('12 to cm')).toBe('12 cm')
+    expect(await shown('12 into cm')).toBe('12 cm')
+    expect(await shown('12 in kg')).toBe('12 kg')
+    expect(await shown('12 in sq cm')).toBe('12 cm²')
+    expect(await shown('12 in km/h')).toBe('12 km/h')
+    expect(await shown('100 in EUR')).toBe('€100.00')
+    expect(await shown('12 + 3 in cm')).toBe('15 cm')
+    expect(await shown('2 * 6 in cm')).toBe('12 cm')
+    expect(await shown('(12) in cm')).toBe('12 cm')
+    expect(await shown('5 ft in cm')).toBe('152.4 cm')
+    expect(await shown('3 days in hours')).toBe('72 h')
   })
 })
 
@@ -207,6 +234,12 @@ describe('convert()', () => {
     expect((await convert('5 ft 3 in', '', 'cm', CONTEXT)).display).toBe('160.02 cm')
     expect((await convert('100', '°F', '°C', CONTEXT)).display).toBe('37.778 °C')
     expect((await convert('5', 'pounds', 'kg', CONTEXT)).display).toBe('2.268 kg')
+  })
+
+  it('reads inches only when they are named', async () => {
+    expect((await convert('12', 'in', 'cm', CONTEXT)).display).toBe('30.48 cm')
+    expect((await convert('12 in', '', 'cm', CONTEXT)).display).toBe('30.48 cm')
+    expect((await convert('12', '', 'cm', CONTEXT)).display).toBe('12 cm')
   })
 
   it('explains instead of throwing', async () => {

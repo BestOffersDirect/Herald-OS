@@ -5,6 +5,7 @@ import { type MatchContext, matchIntent, normaliseUtterance } from './intents.ts
 // A slice of Herald Calc's vocabulary and places for the spoken math grammar.
 vi.mock('../../features/calc/engine/vocabulary.ts', () => ({
   UNIT_WORDS: new Set(['km', 'mile', 'miles', 'litre', 'cup', 'cups', 'kg']),
+  LENGTH_WORDS: new Set(['km', 'mile', 'miles']),
   CURRENCY_WORDS: new Set(['dollars', 'euros', 'usd']),
   MATH_WORDS: new Set(['sqrt', 'pi', 'plus'])
 }))

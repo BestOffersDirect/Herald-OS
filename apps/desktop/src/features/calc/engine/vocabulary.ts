@@ -24,6 +24,9 @@ const WORD_CODES = new Set(['all', 'ang', 'bam', 'bob', 'cup', 'gel', 'lak', 'ma
 /** Every word or symbol read as a unit ("km", "kilometres", "miles", "°f", "fahrenheit", "sq ft"), lower-case. */
 export const UNIT_WORDS: ReadonlySet<string> = new Set([...UNITS.flatMap(unit => [...(unit.words ?? []), ...(unit.exact ?? [])]).map(word => word.toLowerCase()), ...POUND_WORDS])
 
+/** The words of lengths ("cm", "metres", "feet", "light years"), lower-case: before one, the "in" of "12 in cm" is inches. */
+export const LENGTH_WORDS: ReadonlySet<string> = new Set(UNITS.filter(unit => unit.measure === 'length').flatMap(unit => [...(unit.words ?? []), ...(unit.exact ?? [])].map(word => word.toLowerCase())))
+
 /** Currency ISO codes, names and symbols ("usd", "dollars", "euro", "€", "reais"), lower-case. */
 export const CURRENCY_WORDS: ReadonlySet<string> = new Set([
   ...[...CURRENCY_CODES].map(code => code.toLowerCase()).filter(code => !WORD_CODES.has(code)),

@@ -42,7 +42,7 @@ vi.mock('../features/calc/history/store.ts', async () => {
 
   return { $calcHistory: atom([]), loadHistory: async () => undefined, recordCalc: app.recordCalc, clearHistory: app.clearHistory }
 })
-vi.mock('../features/calc/engine/vocabulary.ts', () => ({ UNIT_WORDS: new Set(['km', 'miles', 'litre', 'cups']), CURRENCY_WORDS: new Set(['dollars', 'euros']), MATH_WORDS: new Set() }))
+vi.mock('../features/calc/engine/vocabulary.ts', () => ({ UNIT_WORDS: new Set(['km', 'miles', 'litre', 'cups']), LENGTH_WORDS: new Set(['km', 'miles']), CURRENCY_WORDS: new Set(['dollars', 'euros']), MATH_WORDS: new Set() }))
 vi.mock('../features/calc/engine/zones.ts', () => ({ zoneNames: () => ['tokyo', 'new york'], findZone: () => null, evaluateZoneLine: () => null }))
 
 const AGENT: CommandContext = { source: 'agent' }
