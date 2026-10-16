@@ -215,6 +215,15 @@ function readLine(line: string, context: ParseContext): LineAnalysis {
   return finish({ kind: 'expression', body: question(line, body), label })
 }
 
+const LABEL_NAME = /^[\p{L}_][\p{L}\p{N}_]*(?: [\p{L}_][\p{L}\p{N}_]*){0,3}$/u
+
+/** The name a label gives its line's value ("Hotel: …" → "Hotel"), unless it is built in or a unit's or currency's word. */
+export function labelName(label: string): string | null {
+  const text = label.trim().replace(/\s+/g, ' ')
+
+  return LABEL_NAME.test(text) && !RESERVED_NAMES.has(nameKey(text)) && !findUnit(text) && !CURRENCY_NAMES[text.toLowerCase()] ? text : null
+}
+
 /** A name as scope keys it: lower case, spaces as underscores ("Monthly rent" → "monthly_rent"). */
 export function nameKey(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, '_')

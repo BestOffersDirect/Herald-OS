@@ -37,9 +37,9 @@ export function NotesFooter({ total, usesRates, rates, fetchRates, locale, graph
         </button>
       )}
       <div className="flex min-w-0 items-baseline gap-2.5 pl-1">
-        <span className="text-[12px] text-fg-3">Total</span>
+        {total !== null && <span className="text-[12px] text-fg-3">Total</span>}
         <span className="selectable truncate text-[16px] font-semibold text-fg tabular-nums" aria-live="polite">
-          {total ?? '—'}
+          {total}
         </span>
       </div>
     </footer>

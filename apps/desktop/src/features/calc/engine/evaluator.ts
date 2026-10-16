@@ -29,7 +29,15 @@ export type Value =
 export class CalcError extends Error {}
 
 /** A name with no value: the words around a value may be a label instead. */
-export class UnknownName extends CalcError {}
+export class UnknownName extends CalcError {
+  constructor(
+    message: string,
+    /** The name as written. */
+    readonly name: string
+  ) {
+    super(message)
+  }
+}
 
 const NO_RATES = "No currency rates yet: Herald fetches the European Central Bank's once a day when it can"
 const DIVIDE_BY_ZERO = 'Dividing by zero has no answer'
@@ -370,7 +378,7 @@ export class Evaluator {
       return { kind: 'money', x: Rational.ONE, code: node.code }
     }
 
-    throw new UnknownName(`“${node.name}” has no value yet: give it one on a line above, like “${node.name} = 5”`)
+    throw new UnknownName(`“${node.name}” has no value yet: give it one on a line above, like “${node.name} = 5”`, node.name)
   }
 
   private quantity(value: Value, ref: UnitRef): Value {

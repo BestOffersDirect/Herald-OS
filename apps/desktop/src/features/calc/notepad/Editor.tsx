@@ -14,8 +14,11 @@ const PAD_TOP = 16
  * run of text and the mirror's coloured spans, so they are off in both.
  */
 const TYPE = 'm-0 border-0 px-5 pt-4 font-sans text-[15px] leading-[26px] font-normal tracking-normal tabular-nums whitespace-pre-wrap break-words [font-kerning:none] [font-variant-ligatures:none] [tab-size:4]'
-/** styles.css gives every textarea `font: inherit; color: inherit` outside Tailwind's layers, which beats the classes above. */
-const TEXTAREA_TYPE = { fontSize: 15, lineHeight: `${ROW_PX}px`, fontWeight: 400, fontKerning: 'none', fontVariantLigatures: 'none', fontVariantNumeric: 'tabular-nums', letterSpacing: 'normal', color: 'transparent' } as const
+/**
+ * styles.css gives every textarea `font: inherit; color: inherit` and every focused control an
+ * outline, outside Tailwind's layers, which beats the classes above.
+ */
+const TEXTAREA_STYLE = { fontSize: 15, lineHeight: `${ROW_PX}px`, fontWeight: 400, fontKerning: 'none', fontVariantLigatures: 'none', fontVariantNumeric: 'tabular-nums', letterSpacing: 'normal', color: 'transparent', outline: 'none' } as const
 /** Headings are drawn heavier with a stroke, which leaves each letter's width as it is, unlike a bolder weight. */
 const HEADING_STROKE = { WebkitTextStroke: '0.45px currentColor' } as const
 const HOVER_OPEN_MS = 260
@@ -227,7 +230,7 @@ export function Editor({ text, lines, views, typingLine, inputRef, reduced, plac
               event.currentTarget.scrollTop = 0
             }}
             className={cn(TYPE, 'selectable absolute inset-0 size-full resize-none overflow-hidden bg-transparent pb-4 text-transparent caret-fg outline-none placeholder:text-fg-4')}
-            style={TEXTAREA_TYPE}
+            style={TEXTAREA_STYLE}
           />
         </div>
         <div role="group" aria-label="Results" className="relative max-w-[45%] shrink-0 pr-3 pl-2" style={{ paddingTop: boxes[0]?.top ?? PAD_TOP }}>

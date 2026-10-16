@@ -52,6 +52,22 @@ describe('lines of a note', () => {
     expect(lines[1].error).toMatch(/“tax” has no value yet/)
   })
 
+  it('reads a word after a number that names nothing as what it counts', async () => {
+    const { lines } = await note('4 nights * $189\n3 coffees + 2 coffees\ntax * 100', RATES)
+
+    expect(lines[0]).toMatchObject({ kind: 'value', display: '$756.00' })
+    expect(spans(lines[0])).toContain('nights:label')
+    expect(lines[1]).toMatchObject({ kind: 'value', display: '5' })
+    expect(lines[2].error).toMatch(/“tax” has no value yet/)
+  })
+
+  it('lets a label name its value for the lines after it', async () => {
+    const { lines } = await note('Hotel: 4 nights * 189\nFood: 35 * 6\nhotel + food\nkm: 5\nkm + 1')
+
+    expect(lines[2]).toMatchObject({ kind: 'value', display: '966' })
+    expect(lines[4].kind).not.toBe('value')
+  })
+
   it('drops a trailing comment', async () => {
     const [line] = (await note('84.50 + 15% // with the tip')).lines
 

@@ -2,7 +2,7 @@ import { evaluateDateLine, type TimeContext, type TimeOutcome } from './dates.ts
 import { CalcError, Evaluator, newWork, UnknownName, type Env, type Value } from './evaluator.ts'
 import { formatValue } from './format.ts'
 import { lex, type Token } from './lexer.ts'
-import { analyzeLine, matchSentence, nameKey, type LineShape, type Slice } from './line.ts'
+import { analyzeLine, labelName, matchSentence, nameKey, type LineShape, type Slice } from './line.ts'
 import type { MathEngine } from './math.ts'
 import { ParseError, parseContext, parseTokens, type Node, type ParseContext } from './parser.ts'
 import { printExpression } from './printer.ts'
@@ -34,6 +34,8 @@ interface Failure {
   error: string
   /** The line did not read or named something unknown, so plain words around a value may be a label. */
   soft: boolean
+  /** The name that had no value. */
+  unknown?: string
 }
 
 type Outcome = Answer | Failure
@@ -46,6 +48,8 @@ interface Parsed {
 }
 
 const PARSE_LIMIT = 4000
+/** At most this many words after numbers are read as what they count, in one line. */
+const MAX_COUNT_WORDS = 4
 const parseCache = new Map<string, Parsed>()
 
 function parseText(text: string, context: ParseContext, locale: string | undefined): Parsed {
@@ -329,8 +333,10 @@ class NoteEvaluator {
       return { index, kind: 'error', source, label: shape.label?.text ?? name, name, error: outcome.error, tokens }
     }
 
-    if (name) {
-      this.remember(name, outcome.value, outcome.calc)
+    const named = name ?? (shape.label ? labelName(shape.label.text) : null)
+
+    if (named) {
+      this.remember(named, outcome.value, outcome.calc)
     }
 
     this.settle(outcome.value, outcome.calc)
@@ -375,7 +381,41 @@ class NoteEvaluator {
       }
     }
 
-    return this.trailing(body, prepared, source, tokens) ?? first
+    return this.trailing(body, prepared, source, tokens) ?? this.counted(body, prepared, source, tokens, first) ?? first
+  }
+
+  /** "4 nights * $189": a word right after a number that names nothing says what the number counts. */
+  private counted(body: Slice, prepared: string, source: string, tokens: Token[], first: Failure): Answer | null {
+    const dropped: Token[] = []
+    let text = prepared.slice(body.from, body.to)
+    let failure = first
+
+    while (failure.unknown && dropped.length < MAX_COUNT_WORDS) {
+      const name = failure.unknown.toLowerCase()
+      const word = tokens.find((token, at) => token.kind === 'word' && token.lower === name && tokens[at - 1]?.kind === 'number' && !dropped.includes(token))
+
+      if (!word) {
+        return null
+      }
+
+      dropped.push(word)
+      text = `${text.slice(0, word.from - body.from)}${' '.repeat(word.to - word.from)}${text.slice(word.to - body.from)}`
+      const outcome = this.attempt({ text, from: body.from, to: body.to })
+
+      if (!('error' in outcome)) {
+        const spans: Array<[number, number]> = dropped.map(token => [token.from, token.to])
+
+        return { ...outcome, label: { text: dropped.map(token => source.slice(token.from, token.to)).join(' '), spans: [...spans, ...(outcome.label?.spans ?? [])] } }
+      }
+
+      if (!outcome.soft) {
+        return null
+      }
+
+      failure = outcome
+    }
+
+    return null
   }
 
   private withTrailing(slice: Slice, prepared: string, source: string): Outcome {
@@ -438,7 +478,11 @@ class NoteEvaluator {
 
       return { value, calc, display: evaluator.display(value), steps: evaluator.work.steps, usesRates: evaluator.work.usesRates }
     } catch (error) {
-      if (error instanceof ParseError || error instanceof UnknownName) {
+      if (error instanceof UnknownName) {
+        return { error: error.message, soft: true, unknown: error.name }
+      }
+
+      if (error instanceof ParseError) {
         return { error: error.message, soft: true }
       }
 
