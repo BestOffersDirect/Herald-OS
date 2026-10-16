@@ -166,9 +166,10 @@ day's rates first and a plot may read a whole workbook. Arguments the action doe
 On Herald OS Linux the same commands run from a terminal: `herald-os calc "20% of 84.50"` prints
 the answer as Herald shows it, `--steps` adds the working (and the rates' date) and `--json` prints
 the command's data; `herald-os calc - < budget.txt` reads a note from stdin and prints each line
-with its answer, `herald-os calc convert 5 km miles` converts, `herald-os calc history mortgage`
-finds past calculations, and `herald-os calc open` opens Herald Calc. Quote a sum that holds `*`
-or brackets, which the shell would read itself.
+with its answer, `herald-os calc convert 5 km miles` converts (and
+`herald-os calc convert 9am Sydney London` takes a time of day from one place to another),
+`herald-os calc history mortgage` finds past calculations, and `herald-os calc open` opens Herald
+Calc. Quote a sum that holds `*` or brackets, which the shell would read itself.
 
 ## Where the tools run
 

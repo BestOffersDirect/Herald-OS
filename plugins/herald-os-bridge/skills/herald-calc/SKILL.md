@@ -55,7 +55,7 @@ in cm` is 177.8 cm. Write the unit the person gave (`12 m in ft`, `12 inches in 
 bare number before `in` only when they meant inches.
 
 `calc action=convert value="5 ft 3 in" from=ft to=cm` converts an amount alone, when you have the
-number and both units apart.
+number and both units apart, and `value=9am from=Sydney to=London` a time of day.
 
 ## Currencies
 

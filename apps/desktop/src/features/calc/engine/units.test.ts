@@ -242,6 +242,22 @@ describe('convert()', () => {
     expect((await convert('12', '', 'cm', CONTEXT)).display).toBe('12 cm')
   })
 
+  it('gives a number written as a sum the unit it is in', async () => {
+    expect((await convert('1/2', 'in', 'cm', CONTEXT)).display).toBe('1.27 cm')
+    expect((await convert('sqrt(16)', 'km', 'mi', CONTEXT)).display).toBe('2.4855 mi')
+  })
+
+  it('reads from as the place of a time of day, unless the time names its own', async () => {
+    const tokyo = await convert('9am', 'Tokyo', 'London', CONTEXT)
+
+    expect(tokyo.value).toMatchObject({ kind: 'time', zone: 'Europe/London' })
+    expect(tokyo.display).toBe('1:00 AM (London)')
+    expect((await convert('noon', 'New York', 'Tokyo', CONTEXT)).display).toBe('1:00 AM Fri (Tokyo)')
+    expect((await convert('9am Sydney', 'Tokyo', 'London', CONTEXT)).display).toBe('11:00 PM Thu (London)')
+    expect((await convert('now', 'Tokyo', 'London', CONTEXT)).display).toBe('3:00 AM (London)')
+    expect(await convert('9am', 'Gotham', 'London', CONTEXT)).toMatchObject({ ok: false, error: "I don't know the time zone of “Gotham”." })
+  })
+
   it('explains instead of throwing', async () => {
     expect((await convert('5', 'km', 'kg', CONTEXT)).ok).toBe(false)
     expect((await convert('abc', 'zz', 'qq', CONTEXT)).ok).toBe(false)

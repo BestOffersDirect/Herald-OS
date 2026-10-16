@@ -264,12 +264,13 @@ export const calcCommands: readonly OsCommand[] = [
   {
     id: 'calc.convert',
     title: 'Convert units or currencies',
-    description: 'Convert an amount exactly from one unit or currency to another with Herald Calc: lengths, areas, volumes, weights, temperatures, speeds, data sizes, times, and currencies at the European Central Bank\'s reference rates of the day it names.',
+    description:
+      'Convert an amount exactly from one unit or currency to another with Herald Calc: lengths, areas, volumes, weights, temperatures, speeds, data sizes, times, and currencies at the European Central Bank\'s reference rates of the day it names. A time of day goes from one place\'s time to another\'s: 9am from Sydney to London.',
     tier: 'read',
     args: [
-      { name: 'value', type: 'string', description: "The amount: '5', '2.5', or a quantity like '5 ft 3 in'", required: true },
-      { name: 'from', type: 'string', description: 'The unit or currency it is in: km, °F, USD, cups', required: true },
-      { name: 'to', type: 'string', description: 'The unit or currency to convert it to', required: true }
+      { name: 'value', type: 'string', description: "The amount: '5', '2.5', a quantity like '5 ft 3 in', or a time of day like '9am'", required: true },
+      { name: 'from', type: 'string', description: 'The unit, currency or place it is in: km, °F, USD, cups, Sydney', required: true },
+      { name: 'to', type: 'string', description: 'The unit, currency or place to convert it to', required: true }
     ],
     run: async ({ value, from, to }, context) => {
       const asked = `${String(value)} ${String(from)} in ${String(to)}`

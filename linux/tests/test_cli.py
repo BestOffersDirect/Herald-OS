@@ -306,6 +306,7 @@ def test_calc_words_become_calc_commands(monkeypatch):
     assert cli.calc_request(["convert", "5", "km", "miles"]) == ("calc.convert", {"value": "5", "from": "km", "to": "miles"})
     assert cli.calc_request(["convert", "100", "USD", "to", "BRL"]) == ("calc.convert", {"value": "100", "from": "USD", "to": "BRL"})
     assert cli.calc_request(["convert", "5", "ft", "3", "in", "ft", "cm"]) == ("calc.convert", {"value": "5 ft 3 in", "from": "ft", "to": "cm"})
+    assert cli.calc_request(["convert", "9am", "New York", "to", "London"]) == ("calc.convert", {"value": "9am", "from": "New York", "to": "London"})
     assert cli.calc_request(["history"]) == ("calc.history", {})
     assert cli.calc_request(["history", "that", "mortgage", "thing"]) == ("calc.history", {"query": "that mortgage thing"})
     assert cli.calc_request(["open"]) == ("calc.open", {})

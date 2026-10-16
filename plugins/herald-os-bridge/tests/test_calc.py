@@ -76,6 +76,7 @@ def test_actions_map_to_commands_and_drop_stray_arguments(plugin):
     tools = _mod(plugin, "tools")
     assert tools.calc_command({"action": "eval", "text": "20% of 84.50", "query": "x", "limit": 3}) == ("eval", "calc.eval", {"text": "20% of 84.50"})
     assert tools.calc_command({"action": " Convert ", "value": 5, "from": "km", "to": "mi", "text": ""}) == ("convert", "calc.convert", {"value": 5, "from": "km", "to": "mi"})
+    assert tools.calc_command({"action": "convert", "value": "9am", "from": "New York", "to": "London"}) == ("convert", "calc.convert", {"value": "9am", "from": "New York", "to": "London"})
     assert tools.calc_command({"action": "history"}) == ("history", "calc.history", {})
     assert tools.calc_command({"action": "history", "query": "that mortgage thing", "text": "x"}) == ("history", "calc.history", {"query": "that mortgage thing"})
 

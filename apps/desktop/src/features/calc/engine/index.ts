@@ -3,6 +3,7 @@ import { formatValue as formatCalcValue } from './format.ts'
 import { compile } from './functions.ts'
 import { loadMath } from './math.ts'
 import type { CalcContext, CalcValue, CompiledFunction, DocumentResult, EvalResult, FormatOptions, PlotFunction } from './types.ts'
+import { findZone } from './zones.ts'
 
 /*
  * Herald Calc's exact engine: math.js (its own chunk, loaded on first use) for exact numbers,
@@ -14,6 +15,8 @@ export type { CalcContext, CalcValue, CompiledFunction, DocumentResult, EvalResu
 
 const UNAVAILABLE = "The calculator couldn't start; try again in a moment"
 const NO_MATH = 'There is no math in that to work out'
+/** A number as written ("5", "-2.5", "1,200"), which a unit follows without brackets. */
+const PLAIN_NUMBER = /^[-+−]?[\d.,'’\s]+$/u
 
 /** Load math.js once; the calls below wait for it themselves. */
 export async function loadEngine(): Promise<void> {
@@ -89,16 +92,33 @@ function plotText(plot: PlotFunction): string {
   return !plot.name || plot.name === 'y' ? `y = ${plot.expression}` : `${plot.name}(${plot.variable}) = ${plot.expression}`
 }
 
-/** `amount` (a number, or a quantity like "5 ft 3 in") from one unit or currency to another. Never throws. */
+/**
+ * `amount` from one unit, currency or time zone to another: a number ("5", "1/2") takes `from` as its
+ * unit or currency, a time of day ("9am") as its place, and an amount that names its own units or
+ * place ("5 ft 3 in", "9am Sydney") keeps them. Never throws.
+ */
 export async function convert(amount: string, from: string, to: string, context: CalcContext): Promise<EvalResult> {
   const quantity = amount.trim()
-  const unit = from.trim()
-  const carriesUnit = /[\p{L}$€£¥₹₩₺₪₱฿₽]/u.test(quantity)
-  // "12 in cm" would read the plain number as inches, which nobody asked for here.
-  const keyword = carriesUnit || unit ? 'in' : 'to'
-  const sentence = `${carriesUnit || !unit ? quantity : `${quantity} ${unit}`} ${keyword} ${to.trim()}`
+  const source = from.trim()
+  const target = to.trim()
+  const alone = await evaluate(quantity, context)
+  const kind = alone.ok ? alone.value?.kind : undefined
 
-  return evaluate(sentence, context)
+  if (kind === 'number') {
+    // Without a unit it converts with "to": "12 in cm" would read the plain number as inches.
+    return evaluate(source ? `${PLAIN_NUMBER.test(quantity) ? quantity : `(${quantity})`} ${source} in ${target}` : `${quantity} to ${target}`, context)
+  }
+
+  if (kind === 'time' && source) {
+    const placed = await evaluate(`${quantity} ${source} in ${target}`, context)
+
+    // A time with its own place ("9am Sydney") or "now" reads the extra place as a label, so only an answer in the target zone counts; an unknown place keeps its error.
+    if (placed.ok ? placed.value?.zone === findZone(target) : !findZone(source)) {
+      return placed
+    }
+  }
+
+  return evaluate(kind || !source ? `${quantity} in ${target}` : `${quantity} ${source} in ${target}`, context)
 }
 
 /** A function of `variable` (x when left out) to draw, fast enough to call thousands of times a frame; throws when it does not read. */

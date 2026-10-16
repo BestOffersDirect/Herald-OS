@@ -81,6 +81,17 @@ describe('Herald Calc commands with the real engine', () => {
     expect(Number(converted.data?.value)).toBeCloseTo(3.106856, 5)
   })
 
+  it('converts a time of day from the place it is given, for Hermes and the command line', async () => {
+    const london = await runCommand('calc.convert', { value: '9am', from: 'Tokyo', to: 'London' }, AGENT)
+
+    expect(london.ok, london.error).toBe(true)
+    expect(london.data).toMatchObject({ kind: 'time', zone: 'Europe/London' })
+    expect(london.summary).toMatch(/^9am Tokyo in London = 1:00 AM/)
+    expect((await runCommand('calc.convert', { value: '9am Sydney', from: 'Tokyo', to: 'London' }, AGENT)).summary).toMatch(/^9am Sydney in London = 11:00 PM/)
+    expect(await runCommand('calc.convert', { value: '9am', from: 'Gotham', to: 'London' }, AGENT)).toMatchObject({ ok: false, error: expect.stringContaining('Gotham') })
+    expect((await runCommand('calc.convert', { value: '1/2', from: 'in', to: 'cm' }, AGENT)).data?.value).toBe('1.27')
+  })
+
   it('reads "in" after a plain number as inches for Hermes, the command line and the voice', async () => {
     const inches = await value('12 in cm')
 

@@ -2402,16 +2402,16 @@ CALC_TIMEOUT = 100.0
 CALC_SCHEMA = _schema(
     "calc",
     "Herald Calc, the exact math engine in Herald OS. Use it for ANY arithmetic, percentage, unit, currency, date or time-zone math instead of working it out yourself, even sums that look easy, and show the person the working: every answer comes with its steps. "
-    "action=eval reads a sentence or an expression: \"20% of 84.50\", \"84.50 + 15%\", \"2,400 + 180 split 3 ways\", \"5 km in miles\", \"350°F in C\", \"100 USD in BRL\" (the European Central Bank's reference rates; the answer says which day's), \"days until Dec 25\", \"9am Sydney in New York\"; several lines are read as a note with names and totals (\"rent = 1,200\\nfood = 450\\nrent + food\"). action=convert converts value from one unit or currency to another. "
+    "action=eval reads a sentence or an expression: \"20% of 84.50\", \"84.50 + 15%\", \"2,400 + 180 split 3 ways\", \"5 km in miles\", \"350°F in C\", \"100 USD in BRL\" (the European Central Bank's reference rates; the answer says which day's), \"days until Dec 25\", \"9am Sydney in New York\"; several lines are read as a note with names and totals (\"rent = 1,200\\nfood = 450\\nrent + food\"). action=convert converts value from one unit or currency to another, or a time of day from one place to another (value=9am from=Sydney to=London). "
     "action=plot says what a graph shows without opening anything: for functions of x (\"sin(x) * x; x^2\") where each crosses zero, its local maxima and minima, its asymptotes and the range of y between x_min and x_max (-10 to 10); for a sheet's cells (workbook and range, or \"column B of Budget.xlsx\") how many numbers, the smallest, the largest, the sum and the mean. To show the person a graph run os_ui command=calc.plot, and command=calc.open to open Herald Calc. "
     "action=history searches the person's past calculations, read only (clearing it is theirs). "
     "Before notes with names, graphs, or explaining an answer, read skill_view name=\"herald-os-bridge:herald-calc\".",
     {
         "action": _enum(*CALC_ACTIONS, description="What to do"),
         "text": _desc(_STR, "eval: the sentence or expression; several lines (\\n between them) are read as a note, where a name given a value on one line counts on the lines after it"),
-        "value": _desc(_STR, "convert: the amount, \"5\", \"2.5\" or a quantity like \"5 ft 3 in\""),
-        "from": _desc(_STR, "convert: the unit or currency it is in: km, °F, USD, cups"),
-        "to": _desc(_STR, "convert: the unit or currency to convert it to"),
+        "value": _desc(_STR, "convert: the amount, \"5\", \"2.5\" or a quantity like \"5 ft 3 in\", or a time of day, \"9am\""),
+        "from": _desc(_STR, "convert: the unit, currency or place it is in: km, °F, USD, cups, Sydney"),
+        "to": _desc(_STR, "convert: the unit, currency or place to convert it to"),
         "expression": _desc(_STR, "plot: functions of x, separated by ; or new lines (\"sin(x) * x; x^2\"), or a sheet's cells in words (\"column B of Budget.xlsx\")"),
         "workbook": _desc(_STR, "plot: a Herald Sheets workbook whose numbers to describe, a file or an open workbook's name"),
         "range": _desc(_STR, "plot: the workbook's cells, like B:B or B2:B40"),
