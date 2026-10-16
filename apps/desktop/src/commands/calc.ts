@@ -112,7 +112,9 @@ function spokenAnswer(asked: string, result: EvalResult): string {
     return `${value} ${counted[1]} ${counted[2]}`
   }
 
-  const words = speakable(asked)
+  // "10 km in miles is 6.21 miles" says the target twice: "10 km is 6.21 miles".
+  const conversion = /^(.+)\s+(?:in|into|to|as)\s+\S.{0,30}$/i.exec(asked)
+  const words = speakable(conversion && (result.value?.kind === 'unit' || result.value?.kind === 'currency') ? conversion[1] : asked)
 
   return words.split(' ').length > 12 ? value : `${words} is ${value}`
 }

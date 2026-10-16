@@ -118,7 +118,7 @@ describe('the calc commands', () => {
     const result = await run('calc.eval', { text: '100 USD in BRL' })
 
     expect(result.summary).toBe('100 USD in BRL = R$564.81 (ECB reference rates of 2026-10-15)')
-    expect(result.spoken).toBe('100 USD in BRL is 564.81 Brazilian reais')
+    expect(result.spoken).toBe('100 USD is 564.81 Brazilian reais')
     expect(result.data).toMatchObject({ kind: 'currency', unit: 'BRL', fraction: '15250/27', ratesDate: '2026-10-15' })
   })
 
@@ -205,7 +205,7 @@ describe('the calc commands', () => {
 
     expect(engine.convert).toHaveBeenCalledWith('5', 'km', 'miles', CONTEXT)
     expect(app.calcContext).toHaveBeenCalledWith('5 km in miles')
-    expect(result).toMatchObject({ ok: true, summary: '5 km in miles = 3.11 mi', spoken: '5 km in miles is 3.11 miles', data: { kind: 'unit', unit: 'mi', value: '3.10685596' } })
+    expect(result).toMatchObject({ ok: true, summary: '5 km in miles = 3.11 mi', spoken: '5 km is 3.11 miles', data: { kind: 'unit', unit: 'mi', value: '3.10685596' } })
     expect(app.recordCalc).toHaveBeenCalledWith({ input: '5 km in miles', result: '3.11 mi', source: 'command', context: '' })
   })
 })

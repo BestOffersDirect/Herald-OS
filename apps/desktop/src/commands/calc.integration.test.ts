@@ -114,7 +114,11 @@ describe('Herald Calc commands with the real engine', () => {
     const miles = matchIntent('how many miles is 10 km')
 
     expect(miles).toMatchObject({ command: 'calc.eval', args: { text: '10 km in miles' } })
-    expect(Number((await value(String(miles?.args.text), VOICE)).data?.value)).toBeCloseTo(6.213712, 5)
+    const distance = await value(String(miles?.args.text), VOICE)
+
+    expect(Number(distance.data?.value)).toBeCloseTo(6.213712, 5)
+    expect(distance.spoken).toMatch(/^10 km is 6\.21 miles$/)
+    expect((await value('3 ft 4 in in cm', VOICE)).spoken).toMatch(/^3 ft 4 in is 101\.6 /)
 
     const tokyo = matchIntent('what time is it in tokyo')
 
