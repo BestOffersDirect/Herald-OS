@@ -171,7 +171,8 @@ const api = {
     attachment: (target: string, maxBytes: number): Promise<AttachmentFile> => ipcRenderer.invoke(IPC.fsAttachment, target, maxBytes),
     dirSize: (target: string): Promise<{ bytes: number; files: number; complete: boolean }> => ipcRenderer.invoke(IPC.fsDirSize, target),
     listTree: (root: string, limit = 3000): Promise<{ entries: TreeEntry[]; truncated: boolean }> => ipcRenderer.invoke(IPC.fsListTree, root, limit),
-    watchTree: (root: string): Promise<string> => ipcRenderer.invoke(IPC.fsWatchTree, root),
+    /** The watch's id, or `null` where nothing is watched (the home folder). */
+    watchTree: (root: string): Promise<string | null> => ipcRenderer.invoke(IPC.fsWatchTree, root),
     unwatchTree: (watchId: string): Promise<void> => ipcRenderer.invoke(IPC.fsUnwatchTree, watchId),
     onTreeChanged: (listener: (event: TreeChangedEvent) => void): Unsubscribe => subscribe(IPC.fsTreeChanged, listener),
     /** Absolute path of a File dropped from Finder (Electron removed File.path). */

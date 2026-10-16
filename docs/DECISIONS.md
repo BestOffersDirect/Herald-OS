@@ -224,7 +224,9 @@ store in `store/studio.ts`) folds those events per session, for every session th
   http(s) and `file://` inside the project folder only, and supports `navigate` / `reload`; the
   Studio reloads it after file changes and retries while a dev server is still starting.
 - **The disk is watched too.** `fs.watchTree` (recursive `fs.watch`, dependencies, build output and
-  scratch files skipped) catches files that commands create, such as a scaffolded project.
+  scratch files skipped) catches files that commands create, such as a scaffolded project. The home
+  folder is the one exception: a chat with no project works there, so its tree is listed (one level,
+  without `Library` and dot-entries) but never watched, because everything under `~` changes all the time.
 - **Focus rules hold.** A session started with `build.start` opens its Studio when it starts
   working and never again after the user closes it; other sessions that start writing code only get
   a one-time caption ("say 'show me' to watch").
