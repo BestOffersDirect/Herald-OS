@@ -2,6 +2,7 @@ import type { VoiceEngine, VoicePrefs } from '../../shared/ipc.ts'
 import { atom, computed } from 'nanostores'
 import { acknowledgeCaptureNotice, $captureNotice, $micLevel, $micOpen, microphoneDenied, setCaptureConversing, setMicrophoneMuted } from '../lib/voice/audio-capture.ts'
 import { privacyPaneActions } from '../lib/privacy-pane.ts'
+import { logFailure } from '../lib/report.ts'
 import { earcons } from '../lib/voice/earcons.ts'
 import type { ConversationEndReason, ConversationEngine, TurnHandlers, VoiceCaptions, VoiceHost, VoiceState } from '../lib/voice/engine.ts'
 import { matchIntent } from '../lib/voice/intents.ts'
@@ -452,6 +453,8 @@ export async function startVoice(reason: VoiceStartReason = 'button'): Promise<v
     engine = next
     patch({ engine: resolved.engine })
     await next.start()
+    // Spoken math is answered at once when Herald Calc's engine is loaded before the first question.
+    void import('../features/calc/engine/index.ts').then(calc => calc.loadEngine()).catch(logFailure('calc.loadEngine'))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     engine = null
