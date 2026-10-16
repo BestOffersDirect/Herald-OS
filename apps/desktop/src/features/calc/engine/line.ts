@@ -364,7 +364,7 @@ function lineTokens(line: string, shape: LineShape, extras: TokenSpan[], context
   return spans.sort((a, b) => a.from - b.from)
 }
 
-/** How a token is highlighted, from the token and its neighbours. */
+/** How a token is highlighted, from the token and its neighbours; "in" is a keyword until the line is worked out and its inches are known. */
 function tokenType(token: Token, before?: Token, after?: Token): TokenType | null {
   if (token.kind === 'number') {
     return 'number'
@@ -393,7 +393,7 @@ function tokenType(token: Token, before?: Token, after?: Token): TokenType | nul
     return 'currency'
   }
 
-  if ((findUnit(token.text) || POUND_WORDS.has(word) || /^[cfCF]$/.test(token.text)) && (afterAmount || token.text.length > 2)) {
+  if (word !== 'in' && (findUnit(token.text) || POUND_WORDS.has(word) || /^[cfCF]$/.test(token.text)) && (afterAmount || token.text.length > 2)) {
     return 'unit'
   }
 

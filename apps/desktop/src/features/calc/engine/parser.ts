@@ -247,7 +247,7 @@ class Parser {
         break
       }
 
-      const value = keyword === 'in' && target.target.type === 'unit' && isLength(target.target.unit) ? inInches(node) : node
+      const value = keyword === 'in' && target.target.type === 'unit' && isLength(target.target.unit) ? inInches(node, this.tokens[save].to) : node
 
       node = { type: 'convert', value, target: target.target, from: node.from, to: target.to }
     }
@@ -1044,26 +1044,50 @@ function isLength(ref: UnitRef): boolean {
 
 /**
  * What goes before "in" and a length, with a plain number there read as inches: "12 in cm",
- * "-12 in cm" and the 10 of "5 ft 10 in cm". Sums, names and brackets keep their value.
+ * "-12 in cm" and the 10 of "5 ft 10 in cm". Sums, names and brackets keep their value. The
+ * inches reach to `end`, the end of that "in", which is their unit as well as the conversion.
  */
-function inInches(node: Node): Node {
+function inInches(node: Node, end: number): Node {
   if (node.type === 'number') {
-    return { type: 'quantity', value: node, unit: INCH, from: node.from, to: node.to }
+    return { type: 'quantity', value: node, unit: INCH, from: node.from, to: end }
   }
 
   if (node.type === 'negate') {
-    const value = inInches(node.value)
+    const value = inInches(node.value, end)
 
-    return value === node.value ? node : { ...node, value }
+    return value === node.value ? node : { ...node, value, to: end }
   }
 
   if (node.type === 'binary' && node.op === 'juxt' && node.right.type === 'number') {
     const before = node.left.type === 'binary' && node.left.op === 'juxt' ? node.left.right : node.left
 
-    return before.type === 'quantity' && isLength(before.unit) ? { ...node, right: inInches(node.right) } : node
+    return before.type === 'quantity' && isLength(before.unit) ? { ...node, right: inInches(node.right, end), to: end } : node
   }
 
   return node
+}
+
+/** Where the units written after amounts sit, from the end of each amount to the end of its unit: an "in" there is inches, any other one converts. */
+export function unitSpans(node: Node): Array<[number, number]> {
+  switch (node.type) {
+    case 'quantity':
+      return [[node.value.to, node.to], ...unitSpans(node.value)]
+    case 'name':
+      return node.unit ? [[node.from, node.to]] : []
+    case 'money':
+    case 'percent':
+    case 'negate':
+    case 'factorial':
+    case 'group':
+    case 'convert':
+      return unitSpans(node.value)
+    case 'binary':
+      return [...unitSpans(node.left), ...unitSpans(node.right)]
+    case 'call':
+      return node.args.flatMap(arg => unitSpans(arg))
+    case 'number':
+      return []
+  }
 }
 
 function refOf(entry: UnitWord): UnitRef {

@@ -296,6 +296,19 @@ describe('tokens', () => {
     expect(spans(lines[4])).toEqual(['2:number', 'x:operator', '3:number'])
   })
 
+  it('marks "in" as a unit only where it is read as inches', async () => {
+    const { lines } = await note('12 in cm\n100 in EUR\n$30 in EUR\n12 in in cm\n2 * 6 in cm\n5 ft 10 in cm\n12 in\n5 in hex', RATES)
+
+    expect(spans(lines[0])).toEqual(['12:number', 'in:unit', 'cm:unit'])
+    expect(spans(lines[1])).toEqual(['100:number', 'in:keyword', 'EUR:currency'])
+    expect(spans(lines[2])).toEqual(['$:currency', '30:number', 'in:keyword', 'EUR:currency'])
+    expect(spans(lines[3])).toEqual(['12:number', 'in:unit', 'in:keyword', 'cm:unit'])
+    expect(spans(lines[4])).toEqual(['2:number', '*:operator', '6:number', 'in:keyword', 'cm:unit'])
+    expect(spans(lines[5])).toEqual(['5:number', 'ft:unit', '10:number', 'in:unit', 'cm:unit'])
+    expect(spans(lines[6])).toEqual(['12:number', 'in:unit'])
+    expect(spans(lines[7])).toEqual(['5:number', 'in:unit', 'hex:label'])
+  })
+
   it('marks labels, assignments, headings and comments', async () => {
     const { lines } = await note('Rent: 1,200\nbudget = 5\n# Title\n// aside\nsum')
 

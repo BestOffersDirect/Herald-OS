@@ -4,7 +4,7 @@ import { formatValue } from './format.ts'
 import { lex, type Token } from './lexer.ts'
 import { analyzeLine, labelName, matchSentence, nameKey, type LineShape, type Slice } from './line.ts'
 import type { MathEngine } from './math.ts'
-import { ParseError, parseContext, parseTokens, type Node, type ParseContext } from './parser.ts'
+import { ParseError, parseContext, parseTokens, unitSpans, type Node, type ParseContext } from './parser.ts'
 import { printExpression } from './printer.ts'
 import { Rational } from './rational.ts'
 import type { CalcContext, CalcValue, DocumentResult, LineResult, PlotFunction, TokenSpan } from './types.ts'
@@ -28,6 +28,8 @@ interface Answer {
   time?: boolean
   /** Plain words around the value that name it ("$24 lunch with Sam"), and where they sit. */
   label?: { text: string; spans: Array<[number, number]> }
+  /** Where the units written after amounts sit in the line, so an "in" there shows as inches. */
+  units?: Array<[number, number]>
 }
 
 interface Failure {
@@ -353,7 +355,7 @@ class NoteEvaluator {
       value: outcome.calc,
       display: outcome.display,
       steps: outcome.steps,
-      tokens: retag(tokens, outcome),
+      tokens: retag(tokens, outcome, prepared),
       usesRates: outcome.usesRates || undefined
     }
   }
@@ -470,13 +472,21 @@ class NoteEvaluator {
 
     const sentence = matchSentence(body)
     const evaluator = this.evaluator(parseText(body.text, this.parse, this.context.locale).places)
+    const units: Array<[number, number]> = []
+    const read = (slice: Slice): Node => {
+      const node = this.node(slice)
+
+      units.push(...unitSpans(node).map(([from, to]): [number, number] => [slice.from + from, slice.from + to]))
+
+      return node
+    }
 
     try {
-      const raw = sentence ? evaluator.sentence(sentence, part => evaluator.evaluate(this.node(part))) : evaluator.evaluate(this.node(body))
+      const raw = sentence ? evaluator.sentence(sentence, part => evaluator.evaluate(read(part))) : evaluator.evaluate(read(body))
       const value = evaluator.tidy(raw)
       const calc = evaluator.calcValue(value)
 
-      return { value, calc, display: evaluator.display(value), steps: evaluator.work.steps, usesRates: evaluator.work.usesRates }
+      return { value, calc, display: evaluator.display(value), steps: evaluator.work.steps, usesRates: evaluator.work.usesRates, units }
     } catch (error) {
       if (error instanceof UnknownName) {
         return { error: error.message, soft: true, unknown: error.name }
@@ -556,12 +566,14 @@ function looksLikeMath(text: string, context: ParseContext): boolean {
   })
 }
 
-/** The line's tokens with its label words marked as a label, and a line about dates marked as dates. */
-function retag(tokens: TokenSpan[], answer: Answer): TokenSpan[] {
+/** The line's tokens with its label words marked as a label, a line about dates marked as dates, and an "in" read as inches marked as a unit. */
+function retag(tokens: TokenSpan[], answer: Answer, line: string): TokenSpan[] {
   const spans = answer.label?.spans ?? []
+  const inches = (span: TokenSpan): boolean => line.slice(span.from, span.to).toLowerCase() === 'in' && (answer.units ?? []).some(([from, to]) => span.from >= from && span.to <= to)
   const kept = tokens
     .filter(span => !spans.some(([from, to]) => span.from >= from && span.to <= to))
     .map(span => (answer.time && span.type !== 'comment' && span.type !== 'label' && span.type !== 'operator' ? { ...span, type: 'date' as const } : span))
+    .map(span => (span.type === 'keyword' && inches(span) ? { ...span, type: 'unit' as const } : span))
 
   return [...kept, ...spans.map(([from, to]) => ({ from, to, type: 'label' as const }))].sort((a, b) => a.from - b.from)
 }
