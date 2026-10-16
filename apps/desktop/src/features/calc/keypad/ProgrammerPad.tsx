@@ -9,6 +9,7 @@ import { type KeySound, PROGRAMMER_GRID, PROGRAMMER_KEYS, programmerKeyFor, soun
 import { BASES, type Base, digitValue, WORD_SIZES, type WordSize } from './programmer.ts'
 import { flipBit, pendingWordOperator, previewWord, programmerClearLabel, programmerPendingText, type ProgrammerKey, setBase, setSigned, setWordSize, shownWord, wordText } from './programmer-machine.ts'
 import { DECIMAL_DIGITS, HEX_DIGITS } from './rolling.ts'
+import { RollingNumber } from './RollingNumber.tsx'
 import { Segmented } from './Segmented.tsx'
 import { $programmer, pressProgrammer, updateProgrammer } from './store.ts'
 import { useFlash, useKeypadKeyboard } from './use-keyboard.ts'
@@ -66,7 +67,7 @@ export function ProgrammerPad({ active, locale, reduced, sound, root }: Programm
   )
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2.5">
+    <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto">
       <Display
         label="Result"
         pending={programmerPendingText(state)}
@@ -76,6 +77,7 @@ export function ProgrammerPad({ active, locale, reduced, sound, root }: Programm
         alphabet={state.base === 'hex' ? HEX_DIGITS : DECIMAL_DIGITS}
         reduced={reduced}
         top={top}
+        big={false}
       >
         <div role="radiogroup" aria-label="Base" className="mt-1 flex flex-col gap-px">
           {BASES.map(base => {
@@ -93,14 +95,20 @@ export function ProgrammerPad({ active, locale, reduced, sound, root }: Programm
                 className={cn('flex items-baseline gap-3 rounded-md px-1.5 py-px text-left transition-colors duration-100', on ? 'bg-accent-soft text-fg' : 'text-fg-3 hover:bg-white/6 hover:text-fg-2')}
               >
                 <span className={cn('w-8 shrink-0 text-[10.5px] font-semibold tracking-wider', on ? 'text-accent-strong' : 'text-fg-4')}>{base.toUpperCase()}</span>
-                <span className="min-w-0 flex-1 font-mono text-[12px] leading-[18px] break-words tabular-nums">{digits}</span>
+                {on ? (
+                  <span className="min-w-0 flex-1 font-mono text-[22px] leading-[30px] font-light break-words tabular-nums">
+                    <RollingNumber text={digits} alphabet={base === 'hex' ? HEX_DIGITS : DECIMAL_DIGITS} reduced={reduced} />
+                  </span>
+                ) : (
+                  <span className="min-w-0 flex-1 font-mono text-[12px] leading-[18px] break-words tabular-nums">{digits}</span>
+                )}
               </button>
             )
           })}
         </div>
       </Display>
-      <BitGrid value={value ?? 0n} bits={state.word.bits} onToggle={index => updateProgrammer(current => flipBit(current, index))} />
-      <div className="grid min-h-0 flex-1 grid-cols-6 grid-rows-7 gap-1.5">
+      <BitGrid value={value ?? 0n} bits={state.word.bits} onToggle={index => updateProgrammer(current => flipBit(current, index))} className="[@container(max-height:600px)]:hidden" />
+      <div className="grid min-h-56 flex-1 grid-cols-6 grid-rows-[repeat(7,minmax(1.75rem,1fr))] gap-1.5">
         {PROGRAMMER_GRID.flat().map(key => {
           const def = PROGRAMMER_KEYS.get(key)
 

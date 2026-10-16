@@ -140,7 +140,7 @@ export function KeypadView({ active, className }: KeypadViewProps) {
   }
 
   return (
-    <div ref={rootRef} role="group" aria-label="Keypad" tabIndex={-1} onMouseDown={keepFocus} className={cn('@container flex h-full min-h-0 flex-col gap-3 p-3 outline-none select-none', className)}>
+    <div ref={rootRef} role="group" aria-label="Keypad" tabIndex={-1} onMouseDown={keepFocus} className={cn('flex h-full min-h-0 flex-col gap-3 p-3 outline-none select-none [container-type:size]', className)}>
       <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2">
         <span />
         <Segmented<CalcKeypad> label="Keypad" items={MODES} value={mode} onChange={chooseMode} />
