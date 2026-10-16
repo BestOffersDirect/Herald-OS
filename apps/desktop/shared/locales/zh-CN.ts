@@ -56,6 +56,7 @@ export const zhCN: Translation = {
   'app.sheets': 'Herald Sheets',
   'app.slides': 'Herald Slides',
   'app.room': '宠物小屋',
+  'app.calc': 'Herald Calc',
   'app.applications': '应用程序',
 
   'space.personal': '个人',

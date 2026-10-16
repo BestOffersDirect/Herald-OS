@@ -53,6 +53,7 @@ export const en = {
   'app.sheets': 'Herald Sheets',
   'app.slides': 'Herald Slides',
   'app.room': 'Pet Room',
+  'app.calc': 'Herald Calc',
   'app.applications': 'Applications',
 
   'space.personal': 'Personal',

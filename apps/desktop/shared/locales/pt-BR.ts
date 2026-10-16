@@ -62,6 +62,7 @@ export const ptBR: Translation = {
   'app.sheets': 'Herald Sheets',
   'app.slides': 'Herald Slides',
   'app.room': 'Sala dos Mascotes',
+  'app.calc': 'Herald Calc',
   'app.applications': 'Aplicativos',
 
   'space.personal': 'Pessoal',

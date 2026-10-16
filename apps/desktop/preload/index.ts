@@ -84,6 +84,7 @@ import {
   type WriteTextOptions
 } from '../shared/ipc.ts'
 import type { BrandingPatch, BrandingView } from '../shared/branding.ts'
+import type { CalcBridge, CalcChange, CalcHistoryEntry, CalcHistoryInput, CalcNote, CalcNoteSummary, CalcRatesState } from '../shared/calc.ts'
 import type { ModelId, ModelProgress, ModelStatus } from '../shared/canvas/models.ts'
 import type { OfficeAbilities, OfficeApp } from '../shared/office/files.ts'
 import type { MenuExtensions } from '../shared/menu-extensions.ts'
@@ -359,6 +360,17 @@ const api = {
     readLog: (day: string): Promise<RoomLogEntry[]> => ipcRenderer.invoke(IPC.roomLogRead, day),
     deleteLog: (): Promise<void> => ipcRenderer.invoke(IPC.roomLogDelete)
   } satisfies RoomBridge,
+  calc: {
+    rates: (options?: { cached?: boolean; refresh?: boolean }): Promise<CalcRatesState> => ipcRenderer.invoke(IPC.calcRates, options ?? {}),
+    listNotes: (): Promise<CalcNoteSummary[]> => ipcRenderer.invoke(IPC.calcNotesList),
+    readNote: (id: string): Promise<CalcNote | null> => ipcRenderer.invoke(IPC.calcNoteRead, id),
+    saveNote: (note: { id?: string; text: string }): Promise<CalcNote> => ipcRenderer.invoke(IPC.calcNoteSave, note),
+    deleteNote: (id: string): Promise<void> => ipcRenderer.invoke(IPC.calcNoteDelete, id),
+    history: (limit?: number): Promise<CalcHistoryEntry[]> => ipcRenderer.invoke(IPC.calcHistory, limit),
+    addHistory: (entries: CalcHistoryInput[]): Promise<void> => ipcRenderer.invoke(IPC.calcHistoryAdd, entries),
+    clearHistory: (): Promise<void> => ipcRenderer.invoke(IPC.calcHistoryClear),
+    onChanged: (listener: (what: CalcChange) => void): Unsubscribe => subscribe(IPC.calcChanged, listener)
+  } satisfies CalcBridge,
   catalog: {
     /** The install catalog with each entry's state on this machine (Linux: everything; macOS: what installs here). */
     list: (): Promise<CatalogGroupView[]> => ipcRenderer.invoke(IPC.catalogList),
