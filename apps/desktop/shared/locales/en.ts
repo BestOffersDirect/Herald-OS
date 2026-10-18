@@ -81,6 +81,27 @@ export const en = {
   'switch.nightLight': 'Night light',
   'switch.screensaver': 'Screensaver',
 
+  // The menu a right-click opens in the Terminal; the shortcuts shown beside its items stay as they are.
+  'terminal.menu': 'Copy and paste',
+  'terminal.copy': 'Copy',
+  'terminal.paste': 'Paste',
+  'terminal.copyFailed': 'Could not copy the selection',
+  'terminal.pasteFailed': 'Could not paste into the Terminal',
+  'terminal.clipboardUnavailable': 'Herald OS could not reach the system clipboard. Try again in a moment.',
+  'terminal.pasteTooLarge': 'Too much to paste',
+  // {size} is a size in binary units, such as “1 MiB”.
+  'terminal.pasteTooLargeBody': 'The clipboard holds more than {size} of text, more than the Terminal pastes at once.',
+  'terminal.dropTooLargeBody': 'The dropped text is more than {size}, more than the Terminal pastes at once.',
+  'terminal.dropNotText': 'Only text can be dropped here',
+  'terminal.dropNotTextBody': 'The Terminal pastes text dropped on it. Files, links and pictures are left out.',
+  'terminal.copyTooLarge': 'Too much to copy',
+  'terminal.copyTooLargeBody': 'The selection is more than {size}, more than the Terminal copies at once.',
+  'terminal.pasteUnfocused': 'The Terminal is not in front',
+  'terminal.pasteUnfocusedBody': 'The Terminal pastes only while its window is in front. Click in the Terminal, then paste again.',
+  'terminal.pasteNothing': 'The clipboard has no text to paste.',
+  'terminal.pasteTooFast': 'Pasting too fast',
+  'terminal.pasteTooFastBody': 'The Terminal pastes a few times a second at most. Wait a moment, then paste again.',
+
   'time.justNow': 'just now',
   'time.minutesAgo': '{count}m ago',
   'time.hoursAgo': '{count}h ago',
