@@ -34,11 +34,81 @@ describe('errorText', () => {
     expect(errorText('  Disk is full \n')).toBe('  Disk is full \n')
   })
 
-  it('does not throw for an Error whose message is not a string', () => {
+  it('says something went wrong for an Error whose message is undefined', () => {
     const error = new Error('x')
     Object.defineProperty(error, 'message', { value: undefined })
 
     expect(() => errorText(error)).not.toThrow()
-    expect(errorText(error)).toBe(String(undefined))
+    expect(errorText(error)).toBe(t('settings.somethingWentWrong'))
+  })
+
+  it.each(['en', 'pt-BR', 'zh-CN'] as const)('says something went wrong in %s for an error with no text', language => {
+    $prefs.set({ ...$prefs.get(), language })
+    const generic = t('settings.somethingWentWrong')
+    const nothing: [string, unknown][] = [
+      ["new Error('')", new Error('')],
+      ["new Error('  ')", new Error(' \n\t ')],
+      ["''", ''],
+      ['whitespace', ' \n\t '],
+      ['undefined', undefined],
+      ['null', null],
+      ['{}', {}],
+      ["new Error('[object Object]')", new Error('[object Object]')],
+      ['an Error whose message is null', Object.defineProperty(new Error('x'), 'message', { value: null })],
+      ['an Error whose message is {}', Object.defineProperty(new Error('x'), 'message', { value: {} })]
+    ]
+
+    for (const [what, error] of nothing) {
+      expect(errorText(error), what).toBe(generic)
+    }
+  })
+
+  it('shows text that only looks empty, such as "0" or "false", as it came', () => {
+    expect(errorText(0)).toBe('0')
+    expect(errorText(false)).toBe('false')
+  })
+
+  it.each(['en', 'pt-BR', 'zh-CN'] as const)('says something went wrong in %s for an Error whose message has no prototype', language => {
+    $prefs.set({ ...$prefs.get(), language })
+    const error = new Error('x')
+    Object.defineProperty(error, 'message', { value: Object.create(null) })
+
+    expect(() => errorText(error)).not.toThrow()
+    expect(errorText(error)).toBe(t('settings.somethingWentWrong'))
+  })
+
+  it.each(['en', 'pt-BR', 'zh-CN'] as const)('says something went wrong in %s for a thrown object that has no prototype', language => {
+    $prefs.set({ ...$prefs.get(), language })
+    const thrown: unknown = Object.create(null)
+
+    expect(() => errorText(thrown)).not.toThrow()
+    expect(errorText(thrown)).toBe(t('settings.somethingWentWrong'))
+  })
+
+  it('says something went wrong for a thrown object whose toString throws', () => {
+    const thrown = {
+      toString() {
+        throw new TypeError('no text')
+      }
+    }
+
+    expect(errorText(thrown)).toBe(t('settings.somethingWentWrong'))
+  })
+
+  it.each(['pt-BR', 'zh-CN'] as const)('says something went wrong in %s, not in English', language => {
+    $prefs.set({ ...$prefs.get(), language })
+    const translated = t('settings.somethingWentWrong')
+
+    expect(translated).not.toBe(en['settings.somethingWentWrong'])
+    expect(translated).not.toBe(translate('en', 'settings.somethingWentWrong'))
+    expect(errorText(Object.create(null))).toBe(translated)
+  })
+
+  it('shows a thrown object with text of its own as that text, translating a known one', () => {
+    $prefs.set({ ...$prefs.get(), language: 'pt-BR' })
+
+    expect(errorText({ toString: () => 'Disk is full' })).toBe('Disk is full')
+    expect(errorText({ toString: () => 'gateway not connected' })).toBe(t('settings.agents.gatewayNotConnected'))
+    expect(errorText(404)).toBe('404')
   })
 })

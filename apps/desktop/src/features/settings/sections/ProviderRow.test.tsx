@@ -120,6 +120,25 @@ describe('the model provider row', () => {
     ])
   })
 
+  it.each(['pt-BR', 'zh-CN'] as const)('tooltips the closed dropdown with its prompt in %s', async language => {
+    const host = await show(language)
+    const label = chooser(host)?.querySelector('span.truncate')
+
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(label?.getAttribute('title')).toBe(translated('settings.agents.provider.choose'))
+    expect(label?.getAttribute('title')).toBe(label?.textContent)
+  })
+
+  it('tooltips the closed dropdown with the whole name of the provider chosen', async () => {
+    const name = 'OpenRouter with a name too long to show whole'
+    vi.mocked(loadModelOptions).mockResolvedValue({ providers: [{ ...OPTIONS.providers[0], name, is_current: true }, ...OPTIONS.providers.slice(1)] } as ModelOptionsResult)
+    const host = await show('zh-CN')
+    const dropdown = [...host.querySelectorAll('button')].find(button => button.textContent === name)
+
+    expect(host.querySelector('[role="dialog"]')).toBeNull()
+    expect(dropdown?.querySelector('span.truncate')?.getAttribute('title')).toBe(name)
+  })
+
   it.each(['pt-BR', 'zh-CN'] as const)('asks for an API key in %s', async language => {
     const host = await show(language)
     await click(chooser(host))
@@ -171,5 +190,23 @@ describe('the model provider row, when Hermes cannot be reached', () => {
     expect(host.textContent).toContain(t('settings.agents.provider.unreadable', { error: 'model.options: inventory unavailable' }))
     await click(chooser(host))
     expect([...host.querySelectorAll('.text-danger')].map(error => error.textContent)).toEqual(['model.options: inventory unavailable'])
+  })
+
+  it.each([
+    ["new Error('')", new Error('')],
+    ['whitespace', '  \n'],
+    ['undefined', undefined],
+    ['null', null],
+    ['{}', {}]
+  ])('says something went wrong for a rejection with no text (%s), never a blank line', async (_what, reason) => {
+    vi.mocked(loadModelOptions).mockRejectedValue(reason)
+    const host = await show('pt-BR')
+    const generic = t('settings.somethingWentWrong')
+
+    expect(host.textContent).toContain(t('settings.agents.provider.unreadable', { error: generic }))
+    await click(chooser(host))
+    expect([...host.querySelectorAll('.text-danger')].map(error => error.textContent)).toEqual([generic])
+    expect(host.textContent).not.toContain(t('settings.agents.provider.noMatch'))
+    expect(host.textContent).not.toMatch(/undefined|null|\[object Object\]/)
   })
 })
