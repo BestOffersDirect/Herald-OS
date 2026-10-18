@@ -40,6 +40,23 @@ session and always choices. With voice on, say "yes" to allow once or "no" to de
 ask a question, or for your administrator password for a system task; type it into the card, never
 into the chat. [Privacy and the audit log](privacy.md) explains the rules.
 
+A card never takes the keyboard from a field you are typing in, and never puts it on one of its
+answers, so a key meant for something else cannot answer it. To reach the card from the keyboard,
+press `Cmd+Option+A` on a Mac or `Super+Shift+A` on Herald OS Linux (or run **Go to the waiting
+request** from the command bar or by voice). The keyboard lands on the card itself, for the oldest
+request waiting; Tab reaches **Deny** first, then **Allow once** and the rest. When the card goes,
+the keyboard returns to where it was. Screen readers announce each card once as it arrives: what
+Hermes asks, how many requests are waiting, and which card the keys go to.
+
+Your keys, the command bar and voice can move the keyboard to a card; Hermes's own tools and
+plugins cannot. On Herald OS Linux the key works through `herald-os os requests.focus`, so any
+program running as you can call that too, including a command Hermes runs in a terminal (Hermes's
+approval settings decide whether it may), at most once a second. It brings the Hermes window
+forward when that window does not have the keyboard, once per request and again for the same
+request after 15 seconds, so a program calling it in a loop can bring Hermes up every 15 seconds. A
+program running as you can also type keys into any window, with `wtype` for example, so the card
+guards against stray keys, not against such a program.
+
 ## Voice
 
 Settings > Voice turns voice on (the microphone is never opened while it is off), and its **Try it**
