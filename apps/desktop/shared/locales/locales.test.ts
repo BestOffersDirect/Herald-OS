@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Language, Translation } from '../i18n.ts'
+import type { Language, PluralForms, Translation } from '../i18n.ts'
 import { en } from './en.ts'
 import { ptBR } from './pt-BR.ts'
 import { zhCN } from './zh-CN.ts'
@@ -164,5 +164,36 @@ describe('the copied-English check', () => {
     expect(wordsLeft('Hermes offline', [])).toBe('offline')
     expect(wordsLeft('Add space', ['Studio'])).toBe('Add space')
     expect(wordsLeft('Open Terminal', ['Terminal'])).toBe('Open')
+  })
+})
+
+describe('the counts of requests waiting', () => {
+  const catalogs: Record<Language, Translation> = { en, ...TRANSLATIONS }
+  // The pet's card counts the approvals behind it; the request host's the requests behind its card.
+  const COUNTS = ['requests.approvalsWaiting', 'requests.moreWaiting'] as const
+  const cases = COUNTS.flatMap(key => (Object.keys(catalogs) as Language[]).map(language => [key, language] as const))
+
+  it.each(cases)('%s is translated in %s, with every plural form the language uses', (key, language) => {
+    const message = catalogs[language][key]
+
+    expect(message, language).toBeDefined()
+    expect(typeof message, language).toBe('object')
+
+    const forms = message as PluralForms
+    const rules = new Intl.PluralRules(language)
+
+    for (let count = 1; count <= 100; count++) {
+      const form = rules.select(count)
+      expect(forms[form as keyof PluralForms], `${language} ${count} (${form})`).toContain('{count}')
+    }
+
+    if (language !== 'en') {
+      expect(Object.values(forms), language).not.toContain(en[key].one)
+      expect(Object.values(forms), language).not.toContain(en[key].other)
+    }
+  })
+
+  it.each(COUNTS)('%s reads differently for one and for several in English', key => {
+    expect(en[key].one).not.toBe(en[key].other)
   })
 })

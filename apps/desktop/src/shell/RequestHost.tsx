@@ -26,6 +26,7 @@ import { $voiceActive, $voiceSessionId } from '../store/voice.ts'
 export function RequestHost() {
   const all = useStore($pendingRequests)
   const held = useStore($petHeldApproval)
+  const t = useT()
   const announcement = useArrivalAnnouncement(all)
   const [current, ...rest] = all.filter(entry => entry.request.id !== held && !(held !== null && entry.kind === 'approval'))
 
@@ -36,7 +37,7 @@ export function RequestHost() {
       </div>
       {current && (
         <div className="pointer-events-none absolute right-5 bottom-[92px] z-(--z-request) flex w-[420px] flex-col items-stretch gap-2">
-          {rest.length > 0 && <div className="pointer-events-auto self-end text-[11px] text-fg-3">{rest.length} more waiting</div>}
+          {rest.length > 0 && <div className="pointer-events-auto self-end text-[11px] text-fg-3">{t('requests.moreWaiting', { count: rest.length })}</div>}
           <RequestFrame key={current.request.id} entry={current} />
         </div>
       )}
@@ -236,8 +237,13 @@ function ClarifyCard({ id, params }: { id: string; params: ClarifyRequestParams 
   )
 }
 
+/**
+ * A password or secret: only Cancel sends an empty value, so Tab and Return from the card cannot.
+ * Spaces alone count as empty; anything else is sent exactly as typed, spaces included.
+ */
 function ValueCard({ id, icon, title, description, secret }: { id: string; icon: React.ReactNode; title: string; description?: string; secret?: boolean }) {
   const [value, setValue] = useState('')
+  const filled = value.trim() !== ''
 
   return (
     <div className="flex flex-col gap-3">
@@ -253,7 +259,7 @@ function ValueCard({ id, icon, title, description, secret }: { id: string; icon:
         value={value}
         onChange={event => setValue(event.target.value)}
         onKeyDown={event => {
-          if (event.key === 'Enter') {
+          if (event.key === 'Enter' && filled) {
             resolveRequest(id, { value })
           }
         }}
@@ -263,7 +269,7 @@ function ValueCard({ id, icon, title, description, secret }: { id: string; icon:
         <Button variant="ghost" size="sm" onClick={() => resolveRequest(id, { value: '' })}>
           Cancel
         </Button>
-        <Button variant="primary" size="sm" onClick={() => resolveRequest(id, { value })}>
+        <Button variant="primary" size="sm" disabled={!filled} onClick={() => resolveRequest(id, { value })}>
           Continue
         </Button>
       </div>
