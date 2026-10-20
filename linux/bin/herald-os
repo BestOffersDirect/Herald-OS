@@ -51,6 +51,7 @@ call the tools directly.
   Crashes       crash list | crash diagnose [pid|name] | crash mute <name> [off]
   Events        event <name> [key=value ...] | hook list | hook install <event> <script> | hook dir
   System        lock | suspend | power | wm <niri action...> | state | debug | commands [--json]
+                password | password --disk [--new-owner]: the login password, or the disk password asked at start-up
                 panel wifi|bluetooth|audio|display|power|clock: the menu bar's quick panels
                 restart wifi|bluetooth|sound|touchpad: bring one back when it stopped working
                 toggle nightlight|dnd|idle|screensaver [on|off] | screensaver | idle show|set ...
@@ -61,6 +62,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import getpass
 import io
 import json
 import os
@@ -146,7 +148,7 @@ COMMANDS: dict[str, str] = {
     "bar": "bar [list] | show|hide <item> | move <item> first|last|<n>|before <item>|after <item> | clock [12h|24h|system] [seconds|no-seconds] [date short|long|none] | reset: the menu bar",
     "branding": "branding [show] | set [--logo <image>] [--lock <image>] [--name <text>] | reset [all|logo|lock|name]: About's logo and name, and the lock-screen picture",
     "lock": "Lock the session (needs an account password; see `herald-os password`)",
-    "password": "Set the login password the lock screen asks for",
+    "password": "Set the login password the lock screen asks for | password --disk [--new-owner]: change the disk password typed at start-up (asks for the current one; --new-owner also removes every other key) | password --disk --status: whether the disk is encrypted, as JSON",
     "suspend": "Suspend the machine",
     "power": "Power menu (sleep, restart, shut down, log out)",
     "webapp-open": "Internal: open a web app window: webapp-open <url> <name>",
@@ -2693,6 +2695,508 @@ def password() -> int:
     return subprocess.call(["passwd"])
 
 
+# ---------------------------------------------------------------------------------------------
+# The disk password: the LUKS passphrase typed at start-up to unlock the root filesystem. A change
+# adds the new passphrase first, checks that it opens every device, and only then removes the old
+# one, so whatever stops it part-way (a crash, the power) leaves a passphrase that works: the old
+# one, the new one, or both. The person's side finds the devices and asks for the passphrases; the
+# root side (`password --disk-root`, through sudo) takes them as JSON on stdin and runs cryptsetup.
+DISK_USAGE = "password --disk [--new-owner] | password --disk --status"
+DISK_MIN = 8
+DISK_WRONG, DISK_NOT_ENCRYPTED, DISK_NO_ROOT, DISK_PARTLY, DISK_UNKNOWN, DISK_NOT_TAKEN_BACK, DISK_NOT_THE_PASSWORD = 3, 4, 5, 6, 7, 8, 9
+DISK_NOT_ENCRYPTED_TEXT = (
+    "this computer's disk is not encrypted, so there is no disk password to change. Herald OS encrypts "
+    "the disk when it is installed, unless \"Encrypt my data\" was unticked; encrypting it now means "
+    "installing again."
+)
+DISK_ASCII_TEXT = ("use only letters, digits, spaces and the symbols on the keyboard (ASCII) for the disk password: "
+                   "it is typed before anything else starts, without an input method. Nothing was changed.")
+# How the root side of a change can end and say so itself; any other end (it was killed) is looked
+# at afterwards (disk_probe).
+DISK_ENDS = {0, 1, 2, DISK_WRONG, DISK_NOT_ENCRYPTED, DISK_PARTLY, DISK_NOT_TAKEN_BACK, DISK_NOT_THE_PASSWORD, 127, 130}
+# /sysroot is the real root filesystem on the image (ostree); / elsewhere.
+DISK_ROOT_MOUNTS = ("/sysroot", "/")
+# Made by reset-helper apply: the next account belongs to someone new, so setup asks for a disk
+# password of their own. The root side removes it once they have one.
+NEW_OWNER_MARK = Path("/var/lib/herald-os/new-owner")
+CRYPTSETUP_TIMEOUT = 300
+# Every LUKS2 key slot a header can hold; a passphrase cannot be in more slots than that.
+LUKS_SLOTS = 32
+
+
+def lsblk_children(node: dict) -> list[dict]:
+    children = node.get("children")
+    return [child for child in children if isinstance(child, dict)] if isinstance(children, list) else []
+
+
+def lsblk_mounts(node: dict) -> list[str]:
+    """Where lsblk says a device is mounted: MOUNTPOINTS (a list) since util-linux 2.37, MOUNTPOINT before."""
+    points = node.get("mountpoints")
+    if not isinstance(points, list):
+        points = [node.get("mountpoint")]
+    return [point for point in points if isinstance(point, str) and point]
+
+
+def lsblk_root_luks(tree: list, root_uuid: str | None, mounts: tuple[str, ...] = DISK_ROOT_MOUNTS) -> list[str]:
+    """The LUKS devices the root filesystem sits on, from `lsblk -J -p -o NAME,PATH,TYPE,FSTYPE,UUID,MOUNTPOINTS`
+    (pure; tested). A btrfs spread over several encrypted disks has the same UUID on each, which finds
+    them all although lsblk shows the mount on one; LVM or RAID inside the LUKS device is looked through."""
+
+    def holds_root(node: dict) -> bool:
+        if root_uuid and node.get("uuid") == root_uuid and node.get("fstype") != "crypto_LUKS":
+            return True
+        if any(point in mounts for point in lsblk_mounts(node)):
+            return True
+        return any(holds_root(child) for child in lsblk_children(node))
+
+    found: list[str] = []
+
+    def walk(node: dict) -> None:
+        if node.get("fstype") == "crypto_LUKS" and any(holds_root(child) for child in lsblk_children(node)):
+            path = node.get("path") or node.get("name")
+            if isinstance(path, str) and path and path not in found:
+                found.append(path)
+        for child in lsblk_children(node):
+            walk(child)
+
+    for node in tree if isinstance(tree, list) else []:
+        if isinstance(node, dict):
+            walk(node)
+    return found
+
+
+def disk_root_uuid() -> str | None:
+    for mount in DISK_ROOT_MOUNTS:
+        try:
+            result = subprocess.run(["findmnt", "-n", "-o", "UUID", "--mountpoint", mount], capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        uuid = result.stdout.strip()
+        if result.returncode == 0 and uuid:
+            return uuid
+    return None
+
+
+class DiskUnknown(Exception):
+    """Which devices hold the root filesystem cannot be told; the message says why."""
+
+
+def disk_devices() -> list[str]:
+    """The encrypted devices under the root filesystem, from lsblk. Without lsblk's view it fails closed
+    (DiskUnknown) rather than guess: /etc/crypttab also names data and USB disks, and --new-owner removes
+    every other key slot of each device it is given."""
+    try:
+        listing = subprocess.run(["lsblk", "-J", "-p", "-o", "NAME,PATH,TYPE,FSTYPE,UUID,MOUNTPOINTS"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise DiskUnknown(f"lsblk could not run ({error})") from None
+    try:
+        tree = json.loads(listing.stdout).get("blockdevices") if listing.returncode == 0 else None
+    except (json.JSONDecodeError, AttributeError):
+        tree = None
+    if not isinstance(tree, list):
+        said = (listing.stderr or "").strip().splitlines()
+        raise DiskUnknown("lsblk could not list the disks" + (f" ({said[-1]})" if said else "") + " (util-linux 2.37 or later is needed)")
+    return lsblk_root_luks(tree, disk_root_uuid())
+
+
+def disk_unknown_text(error: DiskUnknown) -> str:
+    return (f"{error}, so Herald OS cannot tell which encrypted devices hold the root filesystem. Nothing was "
+            "changed: guessing could change the password of another disk.")
+
+
+def disk_password_problem(new: str, again: str, current: str) -> str | None:
+    """Why a new disk password will not do, or None (pure; tested). Only printable ASCII: at start-up there
+    is no input method, and the keyboard layout may not be the one the password was typed with."""
+    if new != again:
+        return "the two new disk passwords are not the same. Nothing was changed."
+    if len(new) < DISK_MIN:
+        return f"use at least {DISK_MIN} characters for the disk password. Nothing was changed."
+    if not all(" " <= char <= "~" for char in new):
+        return DISK_ASCII_TEXT
+    if new == current:
+        return "the new disk password is the same as the current one. Nothing was changed."
+    return None
+
+
+def cryptsetup(args: list[str], key: str | None = None, new: str | None = None) -> subprocess.CompletedProcess:
+    """cryptsetup, with a passphrase on stdin and a new one through a pipe. --key-file=- reads to the end
+    of the input, newline and all, so each goes in without one: the same bytes as typed at start-up.
+    External token plugins are kept out, so a TPM or FIDO2 token cannot stand in for the passphrase."""
+    argv = ["cryptsetup", args[0], "--disable-external-tokens", *args[1:]]
+    env = {**os.environ, "LC_ALL": "C"}
+    if key is None:
+        return subprocess.run(argv, capture_output=True, env=env, timeout=CRYPTSETUP_TIMEOUT)
+    argv.insert(2, "--key-file=-")
+    if new is None:
+        return subprocess.run(argv, input=key.encode(), capture_output=True, env=env, timeout=CRYPTSETUP_TIMEOUT)
+    read, write = os.pipe()
+    try:
+        os.write(write, new.encode())
+        os.close(write)
+        write = -1
+        return subprocess.run([*argv, f"/dev/fd/{read}"], input=key.encode(), capture_output=True, env=env, timeout=CRYPTSETUP_TIMEOUT, pass_fds=(read,))
+    finally:
+        os.close(read)
+        if write >= 0:
+            os.close(write)
+
+
+def cryptsetup_said(result: subprocess.CompletedProcess) -> str:
+    text = (result.stderr or b"").decode(errors="replace").strip() or (result.stdout or b"").decode(errors="replace").strip()
+    return text.splitlines()[-1] if text else f"cryptsetup exited {result.returncode}"
+
+
+def luks_slot(device: str, passphrase: str) -> int | None:
+    """The key slot the passphrase opens, -1 when it opens one cryptsetup did not name, None when it opens none."""
+    result = cryptsetup(["open", "--test-passphrase", "-v", device], passphrase)
+    if result.returncode != 0:
+        return None
+    match = re.search(rb"Key slot (\d+) unlocked", (result.stdout or b"") + (result.stderr or b""))
+    return int(match.group(1)) if match else -1
+
+
+def luks_metadata(device: str) -> dict:
+    result = cryptsetup(["luksDump", "--dump-json-metadata", device])
+    if result.returncode != 0:
+        raise RuntimeError(f"cannot read the key slots of {device}: {cryptsetup_said(result)}")
+    data = json.loads(result.stdout)
+    return data if isinstance(data, dict) else {}
+
+
+def luks_extra(metadata: dict, keep: int) -> tuple[list[int], list[int]]:
+    """The key slots other than `keep`, and the tokens (TPM, FIDO2, recovery keys) left with no slot once
+    those go, from `cryptsetup luksDump --dump-json-metadata` (pure; tested)."""
+    slots = sorted(int(slot) for slot in (metadata.get("keyslots") or {}) if str(slot).isdigit() and int(slot) != keep)
+    tokens = []
+    for token, value in (metadata.get("tokens") or {}).items():
+        used = {int(slot) for slot in (value or {}).get("keyslots") or [] if str(slot).isdigit()}
+        if str(token).isdigit() and keep not in used:
+            tokens.append(int(token))
+    return slots, sorted(tokens)
+
+
+def disk_say(*args, **kwargs) -> None:
+    """print, for the root side while it changes the disk: the terminal may be gone (closed, or sudo
+    stopped with it), and a write that fails then must not stop the change half-done."""
+    with contextlib.suppress(OSError, ValueError):
+        print(*args, **kwargs, flush=True)
+
+
+def luks_slot_tokens(metadata: dict, slot: int) -> list[str]:
+    """The types of the tokens that use a key slot (systemd-recovery, systemd-tpm2, systemd-fido2, …),
+    from `cryptsetup luksDump --dump-json-metadata` (pure; tested)."""
+    kinds = []
+    for value in (metadata.get("tokens") or {}).values():
+        if isinstance(value, dict) and str(slot) in {str(each) for each in value.get("keyslots") or []}:
+            kinds.append(str(value.get("type") or "unknown"))
+    return sorted(kinds)
+
+
+def disk_not_the_password(device: str, slot: int, kinds: list[str]) -> str:
+    """Why a secret that opens a slot a token uses is not taken as the disk password (pure; tested)."""
+    if "systemd-recovery" in kinds:
+        return ("that is the recovery key, not the disk password. Type the password the computer asks for when it "
+                "starts; the recovery key stays as it is. Nothing was changed.")
+    return (f"that opens key slot {slot} of {device}, which {' and '.join(kinds)} unlocking uses, not the disk password. "
+            "Type the password the computer asks for when it starts. Nothing was changed.")
+
+
+@contextlib.contextmanager
+def disk_signals_held():
+    """Ctrl+C, a closed terminal or a stop request wait until the change is done (cryptsetup inherits it)."""
+    # SIG_IGN on purpose, not a Python handler: an ignored signal stays ignored across exec, so the
+    # cryptsetup children (and what sudo passes on to them) cannot be stopped between writing a key slot
+    # and the header that records it. That is bounded: each cryptsetup call has CRYPTSETUP_TIMEOUT
+    # (300 s), after which subprocess kills it with SIGKILL, which cannot be ignored, and SIGKILL still
+    # stops this process. setup ssh does it the other way round: its rollback keeps Python handlers that
+    # do nothing (ssh_ignored), which exec resets to the default, because its commands may be stopped
+    # (each runs in a process group of its own and is ended when its time is up), and a signal
+    # arriving there must not raise in the middle of the rollback.
+    held = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT, signal.SIGTSTP)
+    before = {held_signal: signal.signal(held_signal, signal.SIG_IGN) for held_signal in held}
+    try:
+        yield
+    finally:
+        for held_signal, handler in before.items():
+            signal.signal(held_signal, handler)
+
+
+def disk_root(args: list[str]) -> int:
+    """`password --disk-root check|change|probe`, as root: {"devices": [...], "current": ..., "new": ..., "newOwner": bool} on stdin."""
+    try:
+        return disk_root_op(args)
+    except KeyboardInterrupt:
+        # Only before the change: once it starts, Ctrl+C is ignored until it is done (disk_signals_held).
+        die("stopped. Nothing was changed.", 130)
+        return 130
+
+
+def disk_probe(devices: list[str], current: str, new: str) -> dict:
+    """Which of the two passwords opens each device now, for a change that ended without saying."""
+    return {device: {"current": luks_slot(device, current) is not None, "new": bool(new) and luks_slot(device, new) is not None} for device in devices}
+
+
+def disk_root_op(args: list[str]) -> int:
+    op = args[0] if args else ""
+    try:
+        request = json.loads(sys.stdin.read())
+        devices = [str(device) for device in request["devices"]]
+        current = str(request["current"])
+        new = str(request.get("new") or "")
+        new_owner = request.get("newOwner") is True
+    except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+        die("password --disk-root check|change takes its request as JSON on stdin", 2)
+    if op not in ("check", "change", "probe") or not devices:
+        die("password --disk-root check|change takes its request as JSON on stdin", 2)
+    if not shutil.which("cryptsetup"):
+        die("cryptsetup is not installed", 127)
+    if op == "probe":
+        print(json.dumps(disk_probe(devices, current, new)))
+        return 0
+    for device in devices:
+        if cryptsetup(["isLuks", device]).returncode != 0:
+            die(f"{device} is not an encrypted (LUKS) device. Nothing was changed.", DISK_NOT_ENCRYPTED)
+    old_slots: dict[str, int] = {}
+    for device in devices:
+        slot = luks_slot(device, current)
+        if slot is None:
+            die("that is not the disk password" + (f" (it does not open {device})" if len(devices) > 1 else "") + ". Nothing was changed.", DISK_WRONG)
+        old_slots[device] = slot
+    # Only a slot of its own counts as the disk password. One a token uses (the recovery key, TPM or
+    # FIDO2 unlocking) would be removed in its place, leaving the owner's password working and the token
+    # pointing at nothing; a slot cryptsetup did not name cannot be told apart, so it is refused too.
+    for device, slot in old_slots.items():
+        if slot < 0:
+            die(f"cryptsetup did not say which key slot that password opens on {device}, so it cannot be told from "
+                "the recovery key. Nothing was changed.", DISK_NOT_THE_PASSWORD)
+        try:
+            kinds = luks_slot_tokens(luks_metadata(device), slot)
+        except (RuntimeError, json.JSONDecodeError) as error:
+            die(f"{error}. Nothing was changed.", 1)
+        if kinds:
+            die(disk_not_the_password(device, slot, kinds), DISK_NOT_THE_PASSWORD)
+    if op == "check":
+        return 0
+    problem = disk_password_problem(new, new, current)
+    if problem:
+        die(problem, 2)
+    with disk_signals_held():
+        try:
+            return disk_change(devices, current, new, new_owner, old_slots)
+        except subprocess.TimeoutExpired as error:
+            disk_say(f"herald-os: cryptsetup did not finish in {CRYPTSETUP_TIMEOUT} s ({' '.join(map(str, error.cmd[1:2]))}) and was stopped. "
+                  "The new password was added before anything was removed, so at least one of the two opens the disk: "
+                  "try the new one first at the next start, then run `herald-os password --disk` again.", file=sys.stderr)
+            return DISK_PARTLY
+
+
+def disk_change(devices: list[str], current: str, new: str, new_owner: bool, old_slots: dict[str, int]) -> int:
+    added: list[str] = []
+    new_slots: dict[str, int] = {}
+
+    def take_back(why: str) -> int:
+        # Back to the old password alone: the new one goes again from the devices it went into, and
+        # only a device it no longer opens counts as taken back.
+        disk_say(f"herald-os: {why}", file=sys.stderr)
+        left: list[str] = []
+        for device in added:
+            try:
+                result = cryptsetup(["luksRemoveKey", device], new)
+                gone = luks_slot(device, new) is None
+            except (OSError, subprocess.TimeoutExpired) as error:
+                result, gone = subprocess.CompletedProcess([], 1, b"", str(error).encode()), False
+            if not gone:
+                left.append(device)
+                disk_say(f"herald-os: the new disk password could not be taken back out of {device} "
+                      f"({cryptsetup_said(result) if result.returncode else 'it still opens it'}).", file=sys.stderr)
+        if not left:
+            disk_say("herald-os: nothing was changed; the current disk password still works.", file=sys.stderr)
+            return 1
+        disk_say(f"herald-os: the current disk password still opens every device, but the new one may open {' and '.join(left)} "
+              "too. To take it out: " + "; ".join(f"sudo cryptsetup luksRemoveKey {shlex.quote(device)}" for device in left)
+              + " (it asks for the new password), or run `herald-os password --disk` again with the same new password.", file=sys.stderr)
+        return DISK_NOT_TAKEN_BACK
+
+    for device in devices:
+        disk_say(f"Adding the new disk password to {device}…")
+        if luks_slot(device, new) is None:
+            result = cryptsetup(["luksAddKey", device], current, new)
+            if result.returncode != 0:
+                return take_back(f"the new disk password could not be added to {device}: {cryptsetup_said(result)}")
+            added.append(device)
+        slot = luks_slot(device, new)
+        if slot is None or slot == old_slots[device]:
+            return take_back(f"the new disk password does not open {device} after adding it")
+        new_slots[device] = slot
+    disk_say("The new disk password opens the disk. Removing the old one…")
+
+    problems: list[str] = []
+    for device in devices:
+        if new_owner and new_slots[device] >= 0:
+            try:
+                slots, tokens = luks_extra(luks_metadata(device), new_slots[device])
+            except (RuntimeError, json.JSONDecodeError) as error:
+                problems.append(str(error))
+                continue
+            for slot in slots:
+                result = cryptsetup(["luksKillSlot", device, str(slot)], new)
+                if result.returncode != 0:
+                    problems.append(f"key slot {slot} of {device} could not be removed: {cryptsetup_said(result)}")
+            for token in tokens:
+                cryptsetup(["token", "remove", "--token-id", str(token), device])
+        else:
+            for _ in range(LUKS_SLOTS):
+                if luks_slot(device, current) is None:
+                    break
+                result = cryptsetup(["luksRemoveKey", device], current)
+                if result.returncode != 0:
+                    problems.append(f"the old disk password could not be removed from {device}: {cryptsetup_said(result)}")
+                    break
+        if luks_slot(device, current) is not None:
+            problems.append(f"the old disk password still opens {device}")
+        if luks_slot(device, new) is None:
+            problems.append(f"the new disk password does not open {device}")
+    if problems:
+        for problem in problems:
+            disk_say(f"herald-os: {problem}", file=sys.stderr)
+        disk_say("herald-os: the new disk password was added, but not everything above went as planned. Run "
+              "`herald-os password --disk` again with the new password as the current one.", file=sys.stderr)
+        return DISK_PARTLY
+    if new_owner:
+        with contextlib.suppress(OSError):
+            NEW_OWNER_MARK.unlink(missing_ok=True)
+    disk_say("Done: the disk asks for the new password at the next start; the old one no longer opens it.")
+    return 0
+
+
+def disk_root_argv(op: str) -> list[str]:
+    argv = [sys.executable, str(Path(__file__).resolve()), "password", "--disk-root", op]
+    return argv if os.geteuid() == 0 else ["sudo", "-n", *argv]
+
+
+def disk_helper(op: str, request: dict) -> int:
+    if op == "change":
+        return disk_helper_change(request)
+    return subprocess.run(disk_root_argv(op), input=json.dumps(request), text=True).returncode
+
+
+def disk_helper_change(request: dict) -> int:
+    """The change, which nothing here may stop part-way. subprocess.run would kill sudo on Ctrl+C, and
+    the root side with it, between two devices; instead Ctrl+C, Ctrl+\\, Ctrl+Z, a closed terminal and
+    SIGTERM wait here while the root side finishes or puts things back, and then say how it ended."""
+    started: list[subprocess.Popen] = []
+    stops: list[int] = []
+
+    def wait_on(signum: int, frame) -> None:
+        if not stops:
+            disk_say("herald-os: the disk password is still changing; stopping it now could leave it half-done, "
+                     "so this waits until it is finished or put back.", file=sys.stderr)
+        stops.append(signum)
+        # Ctrl+Z also stops sudo; it goes on, so the root side can end and be waited for.
+        if signum == signal.SIGTSTP and started:
+            with contextlib.suppress(OSError):
+                os.kill(started[0].pid, signal.SIGCONT)
+
+    # Python handlers, not SIG_IGN: sudo gets its own back when it starts, and passes them on to the
+    # root side, which ignores them while it changes the disk.
+    held = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT, signal.SIGTSTP)
+    before = {held_signal: signal.signal(held_signal, wait_on) for held_signal in held}
+    try:
+        process = subprocess.Popen(disk_root_argv("change"), stdin=subprocess.PIPE, text=True)
+        started.append(process)
+        with contextlib.suppress(OSError):
+            process.stdin.write(json.dumps(request))
+        with contextlib.suppress(OSError):
+            process.stdin.close()
+        code = process.wait()
+    finally:
+        for held_signal, handler in before.items():
+            signal.signal(held_signal, handler)
+    if code in DISK_ENDS:
+        return code
+    return disk_report_end(request, code)
+
+
+def disk_end_lines(state: dict) -> list[str]:
+    """What opens each device now, from disk_probe (pure; tested)."""
+    words = {(True, True): "the new disk password and the current one both open it",
+             (False, True): "the new disk password opens it, the current one no longer does",
+             (True, False): "the current disk password opens it, the new one does not",
+             (False, False): "neither password opens it"}
+    return [f"{device}: {words[(bool(opens.get('current')), bool(opens.get('new')))]}" for device, opens in state.items() if isinstance(opens, dict)]
+
+
+def disk_report_end(request: dict, code: int) -> int:
+    """The root side ended without saying how (it was killed): look, and say what opens what."""
+    disk_say(f"herald-os: the disk password change ended before it could say how ({'signal ' + str(-code) if code < 0 else 'exit ' + str(code)}). "
+             "What opens the disk now:", file=sys.stderr)
+    try:
+        probe = subprocess.run(disk_root_argv("probe"), input=json.dumps(request), capture_output=True, text=True, timeout=CRYPTSETUP_TIMEOUT * 2)
+        state = json.loads(probe.stdout) if probe.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        state = None
+    if not isinstance(state, dict):
+        disk_say("herald-os: that could not be checked. The new password was added before anything was removed, so at "
+                 "least one of the two opens each device: at the next start, try the new one first, then the current one.", file=sys.stderr)
+        return DISK_PARTLY
+    for line in disk_end_lines(state):
+        disk_say(f"herald-os:   {line}", file=sys.stderr)
+    disk_say("herald-os: run `herald-os password --disk` again to finish, with a password that opens every device as the current one.", file=sys.stderr)
+    return DISK_PARTLY
+
+
+def disk_ask(prompt: str) -> str:
+    """getpass, which cannot decode a byte that is not text in the terminal's encoding: that is refused as
+    anything outside ASCII is, rather than ending in a traceback."""
+    try:
+        return getpass.getpass(prompt)
+    except UnicodeDecodeError:
+        die(DISK_ASCII_TEXT, 2)
+        return ""
+
+
+def disk_password(args: list[str]) -> int:
+    """`password --disk [--new-owner]`: in a terminal, the current disk password, then the new one twice."""
+    flags = set(args)
+    if not flags <= {"--new-owner", "--status"} or len(flags) != len(args) or flags == {"--new-owner", "--status"}:
+        die(DISK_USAGE, 2)
+    try:
+        devices = disk_devices()
+    except DiskUnknown as error:
+        if "--status" in flags:
+            # "encrypted" is null: unknown, which is neither a disk password to ask for nor a disk to call unencrypted.
+            print(json.dumps({"encrypted": None, "devices": [], "newOwner": NEW_OWNER_MARK.exists(), "error": str(error)}))
+            return 0
+        die(disk_unknown_text(error), DISK_UNKNOWN)
+    if "--status" in flags:
+        print(json.dumps({"encrypted": bool(devices), "devices": devices, "newOwner": NEW_OWNER_MARK.exists(), "error": None}))
+        return 0
+    if not devices:
+        die(DISK_NOT_ENCRYPTED_TEXT, DISK_NOT_ENCRYPTED)
+    if not sys.stdin.isatty():
+        die("run `herald-os password --disk` in a terminal", 2)
+    print(f"The disk password unlocks {' and '.join(devices)} when the computer starts.")
+    # Until the change starts, Ctrl+C (or the end of input) only stops the asking: nothing has changed.
+    try:
+        # sudo asks first, with a prompt of its own that stays the same in every language.
+        if os.geteuid() != 0 and subprocess.call(["sudo", "-v", "-p", "[sudo] password for %p: "]) != 0:
+            die("changing the disk password needs root through sudo, which did not let you in. Nothing was changed.", DISK_NO_ROOT)
+        current = disk_ask("Current disk password: ")
+        code = disk_helper("check", {"devices": devices, "current": current})
+        if code != 0:
+            return code
+        new = disk_ask("New disk password: ")
+        again = disk_ask("New disk password again: ")
+    except (KeyboardInterrupt, EOFError):
+        print(file=sys.stderr)
+        die("stopped. Nothing was changed.", 130)
+    problem = disk_password_problem(new, again, current)
+    if problem:
+        die(problem, 2)
+    print("Adding the new disk password and checking it, then removing the old one. Keep the computer on until it is done.")
+    return disk_helper("change", {"devices": devices, "current": current, "new": new, "newOwner": "--new-owner" in flags})
+
+
 def suspend() -> int:
     lock()
     return subprocess.call(["systemctl", "suspend"])
@@ -4810,6 +5314,19 @@ def firmware(args: list[str]) -> int:
 RESET_HELPER = Path("/usr/libexec/herald-os/reset-helper")
 
 
+def reset_disk_note(encrypted: bool | None) -> str:
+    """What a reset leaves on the disk, said plainly; None when it cannot be told (pure; tested)."""
+    if encrypted is None:
+        return ("Herald OS could not tell whether the disk is encrypted. If it is not, a reset deletes the files "
+                "but is not a secure erase: someone with the disk and recovery tools may get some of them back.")
+    if encrypted:
+        return ("The disk is encrypted, and its password stays the current one until whoever sets it up next "
+                "chooses their own in setup: tell it to them, as they type it once to start the computer.")
+    return ("This disk is not encrypted: a reset deletes the files, but it is not a secure erase. Someone with "
+            "the disk and recovery tools may get some of them back. Installing again with \"Encrypt my data\" "
+            "ticked protects what is written from then on.")
+
+
 def reset(args: list[str]) -> int:
     if not RESET_HELPER.exists():
         die("reset is for the Herald OS image", 2)
@@ -4818,6 +5335,11 @@ def reset(args: list[str]) -> int:
     user = os.environ.get("USER", "")
     print(f"This erases {user}'s files, apps and settings on this computer, then restarts into setup.")
     print("Herald OS itself stays. Back up anything you want to keep first.")
+    try:
+        encrypted: bool | None = bool(disk_devices())
+    except DiskUnknown:
+        encrypted = None
+    print(reset_disk_note(encrypted))
     if input("Type ERASE to continue: ").strip() != "ERASE":
         print("Nothing was changed.")
         return 1
@@ -5369,6 +5891,12 @@ def main(argv: list[str]) -> int:
     if cmd == "lock":
         return lock()
     if cmd == "password":
+        if args[:1] == ["--disk-root"]:
+            return disk_root(args[1:])
+        if args[:1] == ["--disk"]:
+            return disk_password(args[1:])
+        if args:
+            die(f"password | {DISK_USAGE}", 2)
         return password()
     if cmd == "suspend":
         return suspend()
