@@ -117,6 +117,7 @@ const { $notifications } = await import('../../store/notifications.ts')
 const { TerminalSurface } = await import('./TerminalSurface.tsx')
 const { editCommands } = await import('../../commands/edit.ts')
 const { defineCommands, resetCommands, runCommand } = await import('../../store/os-commands.ts')
+const { rememberFocusedEditable } = await import('../../store/edit-target.ts')
 const PREFS = $prefs.get()
 
 let root: Root
@@ -156,18 +157,37 @@ function nativeCopy(): { event: ClipboardEvent; copied: string } {
 }
 
 /** A drag event on xterm's input carrying `data`; happy-dom's DragEvent does not take a dataTransfer. */
-function drag(type: 'dragover' | 'drop', data: Record<string, string>): Event {
-  const dataTransfer = new DataTransfer()
+function drag(type: 'dragover' | 'drop', data: Record<string, string> | DataTransfer): DragEvent {
+  const dataTransfer = data instanceof DataTransfer ? data : new DataTransfer()
 
-  for (const [format, value] of Object.entries(data)) {
-    dataTransfer.setData(format, value)
+  if (!(data instanceof DataTransfer)) {
+    for (const [format, value] of Object.entries(data)) {
+      dataTransfer.setData(format, value)
+    }
   }
 
   const event = new Event(type, { bubbles: true, cancelable: true })
   Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })
   xterm.terminal.textarea?.dispatchEvent(event)
 
-  return event
+  return event as DragEvent
+}
+
+/**
+ * A drag released over xterm's input, in Chromium's order: dragover first, then a drop only if
+ * dragover accepted it (called preventDefault and left dropEffect other than 'none').
+ */
+function dragAndDrop(data: Record<string, string>): { over: DragEvent; drop: DragEvent | null } {
+  const dataTransfer = new DataTransfer()
+
+  for (const [format, value] of Object.entries(data)) {
+    dataTransfer.setData(format, value)
+  }
+
+  const over = drag('dragover', dataTransfer)
+  const accepted = over.defaultPrevented && dataTransfer.dropEffect !== 'none'
+
+  return { over, drop: accepted ? drag('drop', dataTransfer) : null }
 }
 
 const menu = () => container.querySelector<HTMLElement>('[role="menu"][aria-label]')
@@ -364,6 +384,61 @@ describe('a spoken or Hermes "paste" into the Terminal', () => {
     xterm.terminal.textarea?.focus()
   })
 
+  it('forgets a Terminal that was unmounted, and pastes into the one mounted in its place', async () => {
+    const old = xterm.terminal
+    const oldInput = old.textarea!
+    act(() => root.unmount())
+    root = createRoot(container)
+    await act(async () => root.render(<TerminalSurface />))
+    await settle()
+    const fresh = xterm.terminal
+
+    expect(fresh).not.toBe(old)
+
+    // The old input back on the page and focused: nothing of the old Terminal may answer for it.
+    document.body.append(oldInput)
+    oldInput.focus()
+    await runCommand('edit.paste', {}, { source: 'voice' })
+    oldInput.remove()
+
+    expect(bridge.readClipboard).not.toHaveBeenCalled()
+    expect(bridge.editPerform).toHaveBeenCalledExactlyOnceWith({ kind: 'paste' })
+
+    bridge.readClipboard.mockResolvedValue({ text: 'echo fresh' })
+    fresh.textarea!.focus()
+    const result = await runCommand('edit.paste', {}, { source: 'voice' })
+
+    expect(result).toMatchObject({ ok: true, summary: 'Pasted into the terminal' })
+    expect(fresh.paste).toHaveBeenCalledExactlyOnceWith('echo fresh')
+    expect(old.paste).not.toHaveBeenCalled()
+  })
+
+  it('does not take a spoken paste into a Terminal that cannot have the keyboard, such as a hidden tab', async () => {
+    const input = xterm.terminal.textarea!
+    rememberFocusedEditable()
+    input.blur()
+    // A hidden tab's input is still on the page but cannot take the focus.
+    vi.spyOn(input, 'focus').mockImplementation(() => {})
+    const result = await runCommand('edit.paste', {}, { source: 'voice' })
+
+    expect(result).toMatchObject({ ok: false, error: 'Nothing to type into. Click a text field (or the terminal) first, then say it again.' })
+    expect(bridge.readClipboard).not.toHaveBeenCalled()
+    expect(bridge.editPerform).not.toHaveBeenCalled()
+    expect(xterm.terminal.paste).not.toHaveBeenCalled()
+  })
+
+  it('takes a spoken "copy" as a copy: the clipboard is not read and nothing is pasted', async () => {
+    xterm.terminal.selection = 'selected output'
+    const result = await runCommand('edit.copy', {}, { source: 'voice' })
+    await settle()
+
+    expect(result).toMatchObject({ ok: true, summary: 'Copied' })
+    expect(bridge.editPerform).toHaveBeenCalledExactlyOnceWith({ kind: 'copy' })
+    expect(bridge.readClipboard).not.toHaveBeenCalled()
+    expect(xterm.terminal.paste).not.toHaveBeenCalled()
+    expect(bridge.write).not.toHaveBeenCalled()
+  })
+
   it('pastes through main and the filter, and says it did', async () => {
     bridge.readClipboard.mockResolvedValue({ text: '\x1b[201~echo pwned\r' })
     const result = await runCommand('edit.paste', {}, { source: 'voice' })
@@ -406,17 +481,18 @@ describe('a drop on the Terminal', () => {
     // Mounting focused the terminal; only the drop may focus it now.
     xterm.terminal.textarea!.blur()
     xterm.terminal.focus.mockClear()
-    const event = drag('drop', { 'text/plain': '\x1b[201~echo pwned\r' })
+    const { over, drop } = dragAndDrop({ 'text/plain': '\x1b[201~echo pwned\r' })
     await settle()
 
-    expect(event.defaultPrevented).toBe(true)
+    expect(over.dataTransfer?.dropEffect).toBe('copy')
+    expect(drop?.defaultPrevented).toBe(true)
     expect(shell()).toBe('\x1b[200~echo pwned\r\x1b[201~')
     expect(xterm.terminal.textarea!.value).toBe('')
     expect(xterm.terminal.focus).toHaveBeenCalledOnce()
   })
 
   it('holds dropped text to the paste limit', async () => {
-    drag('drop', { 'text/plain': 'a'.repeat(1024 * 1024 + 1) })
+    dragAndDrop({ 'text/plain': 'a'.repeat(1024 * 1024 + 1) })
     await settle()
 
     expect(bridge.write).not.toHaveBeenCalled()
@@ -430,8 +506,8 @@ describe('a drop on the Terminal', () => {
     let reachedDocument = 0
     const onDocument = () => reachedDocument++
     document.addEventListener('drop', onDocument)
-    drag('drop', { 'text/plain': 'echo hello' })
-    drag('drop', { 'text/uri-list': 'file:///etc/passwd' })
+    dragAndDrop({ 'text/plain': 'echo hello' })
+    dragAndDrop({ Files: '' })
     await settle()
     document.removeEventListener('drop', onDocument)
 
@@ -439,24 +515,31 @@ describe('a drop on the Terminal', () => {
     expect(reachedDocument).toBe(0)
   })
 
-  it('refuses a drop with no text, sending nothing, and says so', async () => {
-    const event = drag('drop', { 'text/uri-list': 'file:///etc/passwd' })
+  it.each([
+    ['a file', { Files: '' }],
+    ['a picture', { Files: '', 'image/png': '' }],
+    ['a link with no text', { 'text/uri-list': 'file:///etc/passwd' }]
+  ])('accepts %s while it is dragged over, then refuses it on the drop, pasting nothing and saying so', async (_label, data) => {
+    const { over, drop } = dragAndDrop(data)
     await settle()
 
-    expect(event.defaultPrevented).toBe(true)
+    expect(over.defaultPrevented).toBe(true)
+    expect(over.dataTransfer?.dropEffect).toBe('copy')
+    expect(drop?.defaultPrevented).toBe(true)
     expect(bridge.write).not.toHaveBeenCalled()
+    expect(xterm.terminal.paste).not.toHaveBeenCalled()
     expect($notifications.get().map(n => [n.title, n.body])).toEqual([
       ['Only text can be dropped here', 'The Terminal pastes text dropped on it. Files, links and pictures are left out.']
     ])
   })
 
-  it('offers to take text while it is dragged over, and nothing else', () => {
-    const text = drag('dragover', { 'text/plain': 'echo hello' }) as DragEvent
-    const other = drag('dragover', { 'text/uri-list': 'file:///etc/passwd' }) as DragEvent
+  it('does not accept a drag that carries nothing', async () => {
+    const { over, drop } = dragAndDrop({})
+    await settle()
 
-    expect(text.defaultPrevented).toBe(true)
-    expect(text.dataTransfer?.dropEffect).toBe('copy')
-    expect(other.dataTransfer?.dropEffect).toBe('none')
+    expect(over.dataTransfer?.dropEffect).toBe('none')
+    expect(drop).toBeNull()
+    expect($notifications.get()).toEqual([])
   })
 })
 
